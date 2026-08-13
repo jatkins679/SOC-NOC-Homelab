@@ -1,651 +1,492 @@
 # SOC/NOC Homelab
 
-This is a hands-on home laboratory designed to develop, practice, and
-document the infrastructure, networking, monitoring, security, and
-troubleshooting skills used in **Security Operations Center (SOC)** and
-**Network Operations Center (NOC)** environments.
+A hands-on infrastructure, networking, and security-monitoring lab built from repurposed hardware, small-form-factor systems, Raspberry Pis, Proxmox VE, Linux, and open-source security tools.
 
-This repository documents the design and construction of my homelab from
-the physical hardware layer upward. The goal is to show **what I built,
-the commands I executed, the problems I encountered, how I diagnosed
-them, and how I resolved them**.
+The goal of this project is to document what I actually build, the commands I use, the problems I run into, how I troubleshoot them, and what I learn from the process.
 
-The lab is built primarily around **Proxmox VE**, Linux, Windows,
-network segmentation, centralized monitoring, logging, security
-telemetry, and controlled attack/detection exercises.
+This is not intended to represent a production enterprise network. It is a practical learning environment built from hardware I already had available, with a focus on skills relevant to NOC, SOC, systems administration, networking, and entry-level cybersecurity work.
 
-The original idea was to use all the cobbled-together pieces of hardware
-(old laptops, Raspberry Pi's, a Windows server, unmanaged and managed
-switches) and see what I could accomplish in my garage, behind my home
-AT&T fiber connection.
+---
 
-## Project Goals
+## Current Lab Status
 
-The primary goals of this project are to gain and demonstrate practical
-experience with:
+The lab currently includes:
 
-- Linux system administration
-- Proxmox VE administration
-- KVM virtual machines and LXC containers
-- Multi-host virtualization
-- Infrastructure backup and recovery
-- TCP/IP networking
-- DNS and DHCP
-- VLANs and network segmentation
-- Firewall configuration
-- Routing
-- Network monitoring
-- SNMP
-- Centralized logging
-- SIEM administration
-- Windows and Linux endpoint telemetry
-- Vulnerability scanning
-- Packet analysis
-- Incident detection and investigation
-- Controlled offensive-security testing
-- Troubleshooting and root-cause analysis
-- Infrastructure documentation
-- Bash and Linux command-line administration
+- A three-node Proxmox VE cluster
+- Independent Linux management host
+- Physical Pi-hole DNS server
+- Shared Windows-based storage and backup server
+- Kali Linux security-testing system
+- Ubuntu target/test system
+- Wazuh all-in-one SIEM server
+- Wazuh Linux endpoint monitoring
+- File Integrity Monitoring
+- Linux Auditd integration
+- Apache log monitoring
+- Controlled SOC detection exercises
+- Shared Proxmox backup storage
 
-A major objective is to build an environment that resembles a small
-enterprise network rather than a collection of unrelated home servers.
+The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions of the design are still planned work.
 
-But the over-riding objective is to simply see what I can do, teaching
-myself networking and administration skills in the process, and seeing
-what works.
+---
 
-## Lab Architecture
+## Current Architecture
 
-The completed environment will use multiple physical systems with
-clearly defined infrastructure roles.
+| System | Role | IP Address |
+|---|---|---|
+| `pve01` | Proxmox cluster node | `192.168.1.10` |
+| `pve02` | Proxmox cluster node | `192.168.1.11` |
+| `pve03` | Proxmox cluster node | `192.168.1.12` |
+| `mgmt01` | Independent Linux management host | `192.168.1.5` |
+| `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
+| `storage01` | Windows storage/media/backup server | local network |
+| `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
+| `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
+| `kali01` | Security-testing system | `192.168.1.211` |
 
-                             Internet
-                                |
-                          Home Gateway
-                                |
-                         Managed Switch
-                                |
-                 +--------------+--------------+
-                 |                             |
-          Home / Production                SOC/NOC Lab
-                 |                             |
-                 |                       Proxmox Cluster
-                 |                             |
-                 |                 +-----------+-----------+
-                 |                 |           |           |
-                 |               pve01       pve02       pve03
-                 |                 |           |           |
-                 |                 +-----------+-----------+
-                 |                             |
-                 |                         OPNsense
-                 |                             |
-                 |           +---------+-------+-------+---------+
-                 |           |         |       |       |         |
-                 |         MGMT      SERVERS  USERS    SOC      ATTACK
-                 |           |         |       |       |         |
-                 |        Proxmox    Linux   Windows  Wazuh    Kali
-                 |                   Hosts            Zabbix   Test VMs
-                 |
-           Physical Services
-                 |
-           +-----+------+----------------+
-           |            |                |
-         Pi-hole     Storage          Monitoring
-          DNS        / Backup           Probe
+The Proxmox cluster is named:
 
-The design intentionally keeps critical home services separate from
-experimental security infrastructure wherever practical. I don't want my
-home services going down if I mess something up on the learning side of
-my lab.
+```text
+homelab
+```
 
-## Core Technologies
+and currently consists of:
 
-### Virtualization
+```text
+pve01
+pve02
+pve03
+```
 
-- Proxmox VE
-- KVM/QEMU
-- LXC containers
-- Proxmox clustering
-- Proxmox storage management
-- VM/LXC backup and restoration
-- Proxmox Datacenter Manager
+with three-node quorum verified.
 
-### Networking
+---
 
-- TCP/IP
-- Ethernet
-- Linux bridges
-- VLANs
-- DNS
-- DHCP
-- Routing
-- NAT
-- Firewall rules
-- OPNsense
-- SNMP
-- Network troubleshooting
+## Project Documentation
 
-### SOC / Security
+### Completed
 
-- Wazuh
-- Windows Event Logs
-- Sysmon
-- Linux logging
-- OpenVAS / vulnerability scanning
-- Wireshark
-- Nmap
-- Kali Linux
-- Metasploitable
-- MITRE ATT&CK mapping
-- Security alert investigation
+#### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
 
-### NOC / Monitoring
+Documents the pre-rebuild backup process, Proxmox storage validation, VM/LXC inventory, backup verification, and recovery-oriented checks performed before destructive infrastructure changes.
 
-- Zabbix
-- Availability monitoring
-- SNMP monitoring
-- Host resource monitoring
-- Network latency monitoring
-- Service monitoring
-- Centralized alerting
-- Performance troubleshooting
+Topics include:
 
-### Supporting Infrastructure
-
-- Pi-hole
-- Raspberry Pi
-- Windows systems
-- Linux systems
-- SMB/network storage
-- Backup storage
-- Apache Guacamole
-- SSH
-- Git/GitHub
-
-## Physical Infrastructure
-
-The lab uses a mixture of dedicated mini PCs, Raspberry Pis, a Dell
-server, and networking equipment.
-
-The primary virtualization platform is being consolidated into a
-**three-node Proxmox cluster** using similar Intel N95/N97 mini PCs.
-
-Planned primary roles include:
-
-| System                | Role                                         |
-|-----------------------|----------------------------------------------|
-| `pve01`               | Proxmox VE cluster node                      |
-| `pve02`               | Proxmox VE cluster node                      |
-| `pve03`               | Proxmox VE cluster node                      |
-| `pve-mgmt` / `mgmt01` | Independent management system                |
-| `dns01`               | Physical Pi-hole DNS server                  |
-| `storage01`           | File storage and backup server               |
-| `probe01`             | Independent network/service monitoring probe |
-
-Additional physical and virtual endpoints are used for monitoring,
-security telemetry, testing, and controlled attack simulation.
-
-## Why Proxmox?
-
-Proxmox is being used as more than simply a way to run virtual machines.
-
-The environment is intended to provide hands-on experience with:
-
-- Hypervisor installation and administration
-- VM and container provisioning
-- Virtual networking
-- Storage management
-- Resource allocation
-- Backup and disaster recovery
-- Host migration
-- Cluster administration
-- Infrastructure monitoring
-- Troubleshooting
-- Service availability
-- Centralized management
-
-The Proxmox environment provides the foundation on which the SOC and NOC
-infrastructure is being built.
-
-## Repository Structure
-
-    SOC-NOC-Homelab/
-    │
-    ├── README.md
-    │
-    ├── docs/
-    │   ├── 01-proxmox-backup.md
-    │   ├── 02-pihole-migration.md
-    │   ├── 03-proxmox-cluster-build.md
-    │   ├── 04-network-vlans.md
-    │   ├── 05-opnsense.md
-    │   ├── 06-wazuh-siem.md
-    │   ├── 07-zabbix-monitoring.md
-    │   ├── 08-windows-telemetry.md
-    │   └── 09-attack-detection-labs.md
-    │
-    ├── diagrams/
-    │
-    ├── configs/
-    │
-    └── scripts/
-
-Each major implementation phase is documented separately.
-
-## Documentation Philosophy
-
-This repository is intentionally more detailed than a typical homelab
-overview.
-
-For significant configuration tasks, I document:
-
-1.  **What I was trying to accomplish**
-2.  **Why the change was necessary**
-3.  **Commands executed**
-4.  **Configuration changes**
-5.  **Expected results**
-6.  **Actual results**
-7.  **Errors encountered**
-8.  **Troubleshooting performed**
-9.  **Final resolution**
-10. **Skills demonstrated**
-
-For example:
-
-    qm list
-
-**Purpose:** Enumerate QEMU/KVM virtual machines on a Proxmox host
-before performing backup or migration work.
-
-    pct list
-
-**Purpose:** Inventory LXC containers before modifying the
-virtualization environment.
-
-    pvesm status
-
-**Purpose:** Verify Proxmox storage availability and confirm backup
-storage is accessible.
-
-The goal is not to present a collection of copied commands. The
-documentation explains **why each command was used and what information
-or result it provided**.
-
-## Project Phases
-
-### Phase 1 — Existing Infrastructure Discovery
-
-- Inventory physical hardware
-- Identify network interfaces
-- Record existing addressing
-- Inventory Proxmox VMs and containers
-- Identify storage
-- Document existing services
-- Verify backup locations
-
-**Status:** In progress / substantially completed
-
-### Phase 2 — Proxmox Backup and Disaster-Recovery Preparation
-
-Before rebuilding existing Proxmox systems, the current environment is
-being backed up and validated.
-
-Work includes:
-
-- VM inventory
-- LXC inventory
-- Storage verification
+- Proxmox storage inspection
+- VM and LXC inventory
+- Shared backup storage
+- `vzdump`
+- Backup verification
+- Restore-oriented validation
 - Host configuration backup
-- VM/LXC backup
-- Backup inspection
-- Restoration testing
-- Verification before destructive changes
 
-Documentation:
+---
 
-[`docs/01-proxmox-backup.md`](docs/01-proxmox-backup.md)
+#### [02 - Pi-hole Migration](docs/02-pihole-migration.md)
 
-### Phase 3 — Pi-hole Migration
+Documents the migration of DNS service from a Proxmox-hosted Pi-hole container to a dedicated Raspberry Pi.
 
-Pi-hole is being moved from a Proxmox LXC container to a dedicated
-Raspberry Pi.
+The physical Pi-hole server is:
 
-This separates a critical DNS service from the virtualization
-environment so DNS remains available during Proxmox maintenance or
-cluster outages.
+```text
+dns01
+192.168.1.20
+```
 
-Work includes:
+Topics include:
 
-- Raspberry Pi configuration
-- Linux hostname configuration
-- Package updates
+- Raspberry Pi hostname configuration
+- Raspberry Pi OS updates
 - Pi-hole installation
-- DNS configuration
-- Service verification
-- Migration from the previous virtualized Pi-hole instance
+- DNS-service validation
+- Retaining the existing DNS service address
+- Migration planning designed to minimize client-side changes
 
-Documentation:
+---
 
-[`docs/02-pihole-migration.md`](docs/02-pihole-migration.md)
+#### [03 - Proxmox Three-Node Cluster Build and Validation](docs/03-proxmox-cluster-build.md)
 
-### Phase 4 — Proxmox Cluster
+Documents the completed three-node Proxmox cluster:
 
-Three similar mini PCs will form the primary virtualization cluster.
+```text
+pve01  192.168.1.10
+pve02  192.168.1.11
+pve03  192.168.1.12
+```
 
-Planned work includes:
+Topics include:
 
-- Clean Proxmox installations
-- Static management addressing
-- Linux bridge configuration
-- Cluster creation
-- Cluster node joining
-- Storage configuration
-- VM/LXC migration
-- Backup configuration
-- Centralized Proxmox management
-
-Documentation:
-
-[`docs/03-proxmox-cluster-build.md`](docs/03-proxmox-cluster-build.md)
-
-### Phase 5 — Network Segmentation
-
-The lab will be divided into logical security zones using VLANs.
-
-Planned segments include:
-
-    Management
-    Servers
-    User endpoints
-    SOC/security infrastructure
-    Attack/testing environment
-
-This allows firewall policy, routing, monitoring, and security controls
-to be tested in an environment resembling an enterprise network.
-
-Documentation:
-
-[`docs/04-network-vlans.md`](docs/04-network-vlans.md)
-
-### Phase 6 — OPNsense
-
-OPNsense will provide routing and firewalling for the lab environment.
-
-Planned work includes:
-
-- Interface configuration
-- VLAN interfaces
-- DHCP
-- DNS forwarding
-- NAT
-- Inter-VLAN firewall policy
-- Logging
-- Traffic analysis
-
-Documentation:
-
-[`docs/05-opnsense.md`](docs/05-opnsense.md)
-
-### Phase 7 — Wazuh SIEM
-
-Wazuh will provide centralized security monitoring.
-
-Planned monitored systems include:
-
-- Windows endpoints
-- Linux endpoints
-- Infrastructure servers
-- Selected physical systems
-
-Planned security exercises include:
-
-- Failed authentication detection
-- SSH brute-force activity
-- Port scanning
-- Windows account changes
-- Suspicious process execution
-- PowerShell activity
-- File-integrity changes
-- Vulnerability detection
-
-Documentation:
-
-[`docs/06-wazuh-siem.md`](docs/06-wazuh-siem.md)
-
-### Phase 8 — Zabbix NOC Monitoring
-
-Zabbix will provide infrastructure and network monitoring.
-
-Monitoring targets will include:
-
-- Proxmox hosts
-- Linux servers
-- Windows systems
-- DNS
-- Network equipment
-- Storage
-- CPU utilization
-- Memory utilization
-- Disk capacity
-- Network latency
-- Packet loss
-- Service availability
-
-Documentation:
-
-[`docs/07-zabbix-monitoring.md`](docs/07-zabbix-monitoring.md)
-
-### Phase 9 — Windows Telemetry
-
-Windows systems will be configured to produce useful security telemetry.
-
-Planned technologies include:
-
-- Windows Event Logging
-- Sysmon
-- Wazuh agent
-- Zabbix agent
-- PowerShell logging
-- Authentication auditing
-
-Documentation:
-
-[`docs/08-windows-telemetry.md`](docs/08-windows-telemetry.md)
-
-### Phase 10 — Attack and Detection Labs
-
-Controlled attacks will be generated against intentionally vulnerable
-lab systems.
-
-Example workflow:
-
-    Kali Linux
-         |
-         | Nmap / controlled attack
-         v
-    Target System
-         |
-         | logs / telemetry
-         v
-    Wazuh
-         |
-         | security alert
-         v
-    Investigation
-         |
-         v
-    Containment / Remediation
-
-Exercises will be documented from both the offensive and defensive
-perspectives.
-
-Each investigation will attempt to record:
-
-- Source
-- Destination
-- Detection
-- Relevant logs
-- Network evidence
-- Security alert
-- MITRE ATT&CK technique
-- Investigation process
-- Remediation
-- Verification
-
-Documentation:
-
-[`docs/09-attack-detection-labs.md`](docs/09-attack-detection-labs.md)
-
-## Current Progress
-
-Completed or underway:
-
-- [x] Physical hardware inventory
-- [x] Existing Proxmox guest inventory
-- [x] Existing Proxmox storage inspection
-- [x] Proxmox host configuration backup
-- [x] Backup storage verification
-- [x] Proxmox backup/recovery investigation
-- [x] Dedicated Raspberry Pi selected for DNS
-- [x] Pi-hole installed
-- [x] Pi-hole DNS service verified
-- [ ] Complete Pi-hole migration
-- [ ] Build standardized Proxmox nodes
-- [ ] Create Proxmox cluster
-- [ ] Deploy managed VLAN infrastructure
-- [ ] Deploy OPNsense
-- [ ] Deploy Wazuh
-- [ ] Deploy Zabbix
-- [ ] Configure Windows telemetry
-- [ ] Build attack/detection exercises
-
-This list will be updated as the lab evolves.
-
-## Troubleshooting Is Part of the Project
-
-Failed commands and configuration errors are not automatically removed
-from the documentation.
-
-When they provide useful technical information, troubleshooting attempts
-are documented along with the eventual solution.
-
-A NOC or SOC analyst rarely works only with systems that are functioning
-correctly.
-
-For that reason, this project emphasizes:
-
-    Observe
-       ↓
-    Identify symptoms
-       ↓
-    Collect information
-       ↓
-    Form a hypothesis
-       ↓
-    Test
-       ↓
-    Correct
-       ↓
-    Verify
-       ↓
-    Document
-
-The troubleshooting process is considered part of the technical work
-rather than something to hide from the final project.
-
-## Security and Sanitization
-
-This repository documents a real home network.
-
-Before publishing configurations or logs, sensitive information will be
-removed or replaced, including:
-
-- Passwords
-- API keys
-- Authentication tokens
-- Private keys
-- VPN credentials
-- Public IP addresses where appropriate
-- Personally identifying information
-- Sensitive internal configuration
-- Device identifiers when unnecessary
-
-Private RFC1918 addresses may also be generalized in public-facing
-diagrams and documentation where exposing the actual addressing provides
-no technical value.
-
-## Skills Demonstrated
-
-This project is intended to demonstrate practical ability in several
-overlapping areas.
-
-### Systems Administration
-
-- Linux administration
-- Windows administration
-- Package management
-- Services
+- Cluster membership
+- Quorum
+- Node identity
 - Networking
-- Storage
-- SSH
-- CLI troubleshooting
+- Shared storage
+- VM and LXC visibility
+- Cluster resource validation
+- Capacity review
+- Decision not to deploy Ceph
 
-### Virtualization
+---
 
-- Proxmox VE
-- KVM
-- LXC
-- Virtual networking
-- Cluster administration
-- Backup and recovery
-- Resource management
+#### [06 - Wazuh SIEM Deployment](docs/06-wazuh-siem.md)
 
-### Network Operations
+Documents deployment of the Wazuh SIEM server as a dedicated Proxmox virtual machine.
 
-- TCP/IP
-- DNS
-- VLANs
-- Routing
-- Firewalls
-- SNMP
-- Availability monitoring
-- Performance monitoring
-- Network troubleshooting
+Topics include:
 
-### Security Operations
+- Ubuntu Server deployment
+- Proxmox VM configuration
+- Pi-hole DNS integration
+- QEMU guest agent
+- LVM expansion
+- Wazuh all-in-one installation
+- OpenSearch troubleshooting
+- Disk flood-stage diagnosis
+- Failed-install recovery
+- Clean VM rebuild
+- Wazuh service validation
+- Linux agent enrollment
+
+This document also records an important deployment failure in which Ubuntu had not allocated the full virtual disk to the root logical volume. OpenSearch crossed its disk flood-stage threshold, placed its security index into read-only mode, and caused the Wazuh installer to fail during internal-user configuration.
+
+Rather than hiding the failed deployment, the troubleshooting process is documented because it demonstrates the diagnostic workflow that led to the root cause and recovery decision.
+
+---
+
+#### [09 - Wazuh Attack Detection Labs](docs/09-attack-detection-labs.md)
+
+Documents controlled SOC exercises performed after the Wazuh deployment was operational.
+
+Completed detections include:
+
+| Lab | Detection | Wazuh Rule | Level | MITRE ATT&CK |
+|---|---|---:|---:|---|
+| 1 | SSH brute force | `5712` | 10 | `T1110` |
+| 2 | File integrity modification | `550` | 7 | `T1565.001` |
+| 3 | SQL injection attempt | `31103` | 7 | `T1190` |
+| 4 | Root command execution | `80792` | 3 | — |
+| 5a | Local account creation | `5902` | 8 | `T1136` |
+| 5b | Local account deletion | `5903` | 3 | `T1531` |
+
+These exercises validate the telemetry path:
+
+```text
+Controlled activity
+      ↓
+Linux / application logs
+      ↓
+Wazuh agent
+      ↓
+Wazuh manager / indexer
+      ↓
+Wazuh rule correlation
+      ↓
+Threat Hunting
+      ↓
+Analyst validation
+```
+
+---
+
+## Detection Work Completed
+
+### SSH Brute-Force Detection
+
+Repeated failed SSH attempts were generated from `kali01` against a nonexistent account on `target01`.
+
+Wazuh generated:
+
+```text
+Rule 5712
+Level 10
+MITRE T1110 - Brute Force
+```
+
+The Wazuh alert was independently validated against the original SSH journal on the endpoint.
+
+---
+
+### File Integrity Monitoring
+
+Wazuh FIM was configured to monitor a controlled test directory in real time.
+
+A configuration file was:
+
+1. Created
+2. Modified
+3. Deleted
+
+Wazuh captured:
+
+- File-size changes
+- Modification time
+- MD5
+- SHA1
+- SHA256
+- File-content difference
+
+The modification generated:
+
+```text
+Rule 550
+Level 7
+MITRE T1565.001 - Stored Data Manipulation
+```
+
+---
+
+### Web / SQL Injection Detection
+
+Apache access logs from `target01` were added to Wazuh log collection.
+
+A controlled request containing SQL-like syntax was generated from `kali01`.
+
+Wazuh generated:
+
+```text
+Rule 31103
+Level 7
+MITRE T1190 - Exploit Public-Facing Application
+```
+
+The request returned HTTP 404, but the attempt was still correctly identified from the Apache access log.
+
+---
+
+### Privileged Command Monitoring
+
+Linux Auditd was configured to record `execve` events executed with effective UID 0.
+
+Wazuh generated:
+
+```text
+Rule 80792
+```
+
+for root-level command activity.
+
+The audit records demonstrated the difference between:
+
+```text
+AUID = original authenticated user
+EUID = effective execution identity
+```
+
+This allowed a root-level command to be attributed back to the original user session.
+
+---
+
+### Local Account Creation and Deletion
+
+A controlled test account was created and later removed.
+
+Account creation generated:
+
+```text
+Rule 5902
+Level 8
+MITRE T1136 - Create Account
+```
+
+Account deletion generated:
+
+```text
+Rule 5903
+Level 3
+MITRE T1531 - Account Access Removal
+```
+
+---
+
+## Hardware
+
+The lab is intentionally built from modest and repurposed hardware rather than enterprise server equipment.
+
+Current systems include:
+
+- Acemagic mini PCs used as Proxmox nodes
+- Ace Magician mini PC
+- Lenovo laptop used as an independent management host
+- Dell PowerEdge T20 used for storage, media, and backup
+- Raspberry Pi used for DNS
+- Additional Raspberry Pi hardware
+- Existing unmanaged Ethernet switching
+- GL.iNet hardware for network experimentation / backup connectivity
+
+A Cisco managed switch is planned for the next networking phase.
+
+---
+
+## Storage and Backup
+
+Proxmox currently uses:
+
+```text
+local
+local-lvm
+t-20-backup
+```
+
+`local` is directory-based Proxmox storage used for files such as ISOs and templates.
+
+`local-lvm` is LVM-thin storage used primarily for VM and container disks.
+
+`t-20-backup` is CIFS-backed shared storage hosted by the Dell PowerEdge T20 and is used for Proxmox backups.
+
+Ceph is intentionally not used. The current mini-PC hardware and lab scale do not justify the additional resource and storage overhead.
+
+---
+
+## Current Security Stack
+
+### Wazuh
+
+Used for:
 
 - SIEM
-- Endpoint telemetry
-- Log analysis
-- Alert investigation
-- Vulnerability scanning
-- Packet analysis
-- Threat detection
-- Incident-response workflow
+- Endpoint monitoring
+- Log collection
+- Threat Hunting
+- File Integrity Monitoring
+- Auditd event analysis
+- Authentication monitoring
+- MITRE ATT&CK mappings
+- Security alert correlation
 
-### Documentation
+### Kali Linux
 
-- Change documentation
-- Command logging
-- Network diagrams
-- Troubleshooting notes
-- Incident reports
-- Configuration documentation
-- Git/GitHub
+Used as a controlled security-testing system for generating activity against systems owned and operated within the lab.
 
-## About This Repository
+### Ubuntu Target System
 
-This is an evolving lab.
+`target01` is used as a monitored Linux endpoint and controlled security-testing target.
 
-Configurations, architecture, and documentation will change as the
-environment becomes more mature.
+It currently provides telemetry from:
 
-The objective is not to claim that a homelab is equivalent to operating
-a production enterprise SOC or NOC. The objective is to **practice the
-same underlying technologies, administrative tasks, troubleshooting
-methods, and analytical processes in a controlled environment and
-document that work clearly**.
+- SSH
+- journald
+- Apache
+- Wazuh Syscheck / FIM
+- Linux Auditd
+- Linux account-management events
 
-The result should make it possible for someone reviewing this repository
-to see not only the technologies I have studied, but also evidence of
-how I have actually used them.
+---
+
+## Planned Network Design
+
+The next major network phase will introduce managed switching and segmentation.
+
+The planned design includes separate logical areas for:
+
+- Management
+- Servers
+- User systems
+- SOC/security systems
+- Attack/testing systems
+- Guest access
+
+The exact VLAN implementation will be documented after the managed Cisco switch is installed.
+
+I am intentionally not documenting planned VLANs as though they already exist.
+
+---
+
+## Roadmap
+
+### Completed
+
+- [x] Inventory existing lab hardware
+- [x] Back up Proxmox workloads
+- [x] Validate Proxmox recovery process
+- [x] Move Pi-hole to physical Raspberry Pi
+- [x] Establish `mgmt01`
+- [x] Move storage/media role to `storage01`
+- [x] Build three-node Proxmox cluster
+- [x] Verify cluster quorum
+- [x] Verify shared backup storage
+- [x] Deploy Wazuh SIEM
+- [x] Enroll first Linux Wazuh agent
+- [x] Validate SSH brute-force detection
+- [x] Validate File Integrity Monitoring
+- [x] Validate Apache / SQL-injection-style detection
+- [x] Integrate Linux Auditd
+- [x] Validate privileged-command monitoring
+- [x] Validate local account creation/deletion monitoring
+
+### In Progress / Planned
+
+- [ ] Add screenshots and diagrams to completed documentation
+- [ ] Install Cisco managed switch
+- [ ] Design and implement VLANs
+- [ ] Deploy OPNsense
+- [ ] Add additional Linux agents
+- [ ] Add Windows endpoint telemetry
+- [ ] Monitor SSH `authorized_keys`
+- [ ] Create custom Wazuh rules
+- [ ] Test Wazuh Active Response
+- [ ] Tune alerts and reduce false positives
+- [ ] Add network monitoring
+- [ ] Add Zabbix
+- [ ] Expand attack/detection exercises
+- [ ] Document final physical and logical network design
+
+---
+
+## Planned Documentation
+
+The documentation numbering is intentionally organized around major project phases.
+
+| Document | Topic | Status |
+|---|---|---|
+| `01-proxmox-backup.md` | Backup and recovery preparation | Complete |
+| `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
+| `03-proxmox-cluster-build.md` | Three-node Proxmox cluster | Complete |
+| `04-network-vlans.md` | Managed switching and VLAN design | Planned |
+| `05-opnsense.md` | OPNsense routing/firewalling | Planned |
+| `06-wazuh-siem.md` | Wazuh deployment | Complete |
+| `07-zabbix-monitoring.md` | Infrastructure monitoring | Planned |
+| `08-windows-telemetry.md` | Windows endpoint telemetry | Planned |
+| `09-attack-detection-labs.md` | SOC detection exercises | Active / documented |
+
+---
+
+## Documentation Approach
+
+This repository is intended to show the actual operational process rather than a polished fictional build.
+
+That means the documentation includes:
+
+- Commands that were actually used
+- Validation steps
+- Configuration decisions
+- Useful failures
+- Troubleshooting
+- Root-cause analysis
+- Recovery decisions
+- Security-event evidence
+- Skills demonstrated
+
+Where an exact historical command was not preserved, I avoid presenting a reconstructed command as though it came directly from shell history.
+
+Passwords, tokens, generated credentials, and other sensitive values are excluded from the repository.
+
+---
+
+## Why I Built This
+
+Most of this equipment started as a collection of old laptops, Raspberry Pis, mini PCs, Windows systems, switches, and other hardware in my garage behind an AT&T fiber connection.
+
+Rather than replace everything with new enterprise hardware, I wanted to see how far I could take the equipment I already had.
+
+The project gives me a place to:
+
+- Practice Linux and systems administration
+- Learn network design and troubleshooting
+- Work with virtualization and clustering
+- Generate and investigate security telemetry
+- Practice SOC-style alert analysis
+- Test monitoring tools
+- Document problems and their resolution
+- Build practical experience that can be shown to prospective employers
+
+The lab will continue to evolve as additional networking, monitoring, and security components are added.
