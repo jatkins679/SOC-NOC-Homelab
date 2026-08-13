@@ -45,9 +45,7 @@ The VM uses the Proxmox bridge `vmbr0`.
 
 ## Initial VM Creation
 
-The VM was created from the Proxmox command line.
-
-Example configuration used during deployment:
+The VM was created from the Proxmox command line. The configuration below records the deployment configuration used for VM 500.
 
 ```bash
 qm create 500 \
@@ -59,3 +57,451 @@ qm create 500 \
   --scsihw virtio-scsi-single \
   --agent enabled=1 \
   --ostype l26
+```
+
+The virtual disk, ISO and network interface were then attached:
+
+```bash
+qm set 500 --scsi0 local-lvm:100,discard=on,iothread=1
+
+qm set 500 \
+  --ide2 local:iso/ubuntu-24.04.4-live-server-amd64.iso,media=cdrom
+
+qm set 500 --net0 virtio,bridge=vmbr0
+qm set 500 --boot 'order=ide2;scsi0'
+```
+
+The VM was then started:
+
+```bash
+qm start 500
+```
+
+## Ubuntu Configuration
+
+After installing Ubuntu Server, I verified the system identity and network configuration:
+
+```bash
+hostname
+ip -br addr
+ip route
+```
+
+The system hostname was:
+
+```text
+wazuh01
+```
+
+The rebuilt server ultimately received:
+
+```text
+192.168.1.206
+```
+
+from DHCP.
+
+## DNS Configuration
+
+The Wazuh server was configured to use the physical Pi-hole server rather than DNS supplied by the home gateway.
+
+The Netplan configuration retained DHCP for addressing but disabled DHCP-provided DNS:
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    ens18:
+      dhcp4: true
+      dhcp4-overrides:
+        use-dns: false
+      nameservers:
+        addresses:
+          - 192.168.1.20
+```
+
+The configuration was applied with:
+
+```bash
+sudo netplan apply
+```
+
+DNS was verified with:
+
+```bash
+resolvectl status
+ping -c 3 192.168.1.20
+ping -c 3 google.com
+```
+
+This confirmed both connectivity to `dns01` and external name resolution.
+
+## QEMU Guest Agent
+
+The Proxmox guest agent was installed inside Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y qemu-guest-agent
+sudo systemctl start qemu-guest-agent
+```
+
+The guest service was then verified:
+
+```bash
+systemctl is-active qemu-guest-agent
+```
+
+## Operating System Update
+
+Before installing Wazuh, the system was fully updated:
+
+```bash
+sudo apt update
+sudo apt full-upgrade -y
+sudo reboot
+```
+
+## Storage Validation
+
+An important lesson from the first deployment attempt was to verify the guest filesystem before installing Wazuh.
+
+The following commands were used:
+
+```bash
+df -h /
+sudo pvs
+sudo vgs
+sudo lvs
+lsblk
+```
+
+Ubuntu's default LVM installation did not initially allocate the entire virtual disk to the root logical volume.
+
+The logical volume was expanded using:
+
+```bash
+sudo lvextend -l +100%FREE -r /dev/ubuntu-vg/ubuntu-lv
+```
+
+The result was verified with:
+
+```bash
+df -h /
+```
+
+This step became part of the deployment checklist before installing Wazuh.
+
+## First Wazuh Installation Attempt
+
+The Wazuh installation assistant was downloaded and started with:
+
+```bash
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a
+```
+
+The installation successfully deployed:
+
+- Wazuh indexer
+- Wazuh manager
+- Filebeat
+- Wazuh dashboard
+
+However, the installer failed during the final security-user configuration stage.
+
+## Troubleshooting the Failed Deployment
+
+The Wazuh installation log was inspected:
+
+```bash
+sudo tail -n 80 /var/log/wazuh-install.log
+```
+
+The important failure was caused by OpenSearch placing its security index into read-only mode after the filesystem crossed its flood-stage disk watermark.
+
+This occurred because the Ubuntu root logical volume was substantially smaller than the virtual disk assigned by Proxmox.
+
+The disk issue was diagnosed using:
+
+```bash
+df -h /
+lsblk
+sudo pvs
+sudo vgs
+sudo lvs
+```
+
+The underlying virtual disk had free LVM capacity that had not been assigned to the root filesystem.
+
+After expanding the logical volume, filesystem utilization dropped significantly.
+
+## Additional Indexer Recovery
+
+During recovery attempts, the Wazuh indexer later failed to start.
+
+The service was investigated using:
+
+```bash
+sudo systemctl status wazuh-indexer --no-pager -l
+sudo journalctl -xeu wazuh-indexer.service --no-pager
+```
+
+The failure was traced to:
+
+```text
+java.nio.file.AccessDeniedException:
+/etc/wazuh-indexer/backup
+```
+
+Permissions on installer-created backup directories were corrected before restarting the indexer.
+
+The indexer was then verified as listening on port 9200.
+
+## Credential State After Interrupted Installation
+
+Because the original installer failed while updating internal Wazuh/OpenSearch credentials, the installation was left with inconsistent authentication state between components.
+
+Although individual services could be recovered, the dashboard continued to encounter authentication problems with the indexer.
+
+At that point, continuing to repair a new installation had less value than rebuilding the server in a known-good state.
+
+No production data, agents or custom rules existed yet, so the VM was rebuilt.
+
+## Clean Rebuild
+
+VM 500 was removed and recreated with a larger 100 GB virtual disk.
+
+Before reinstalling Wazuh, the rebuilt system was validated for:
+
+- Correct hostname
+- Correct networking
+- Pi-hole DNS
+- Full LVM allocation
+- Approximately 8 GB RAM
+- Current Ubuntu packages
+- QEMU guest agent operation
+
+Only after those checks passed was the Wazuh installation assistant run again:
+
+```bash
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a
+```
+
+This installation completed successfully.
+
+## Wazuh Service Validation
+
+The four main services were checked:
+
+```bash
+sudo systemctl is-active wazuh-indexer
+sudo systemctl is-active wazuh-manager
+sudo systemctl is-active filebeat
+sudo systemctl is-active wazuh-dashboard
+```
+
+All four returned:
+
+```text
+active
+```
+
+The web dashboard was then accessed at:
+
+```text
+https://192.168.1.206
+```
+
+and successful authentication confirmed the Wazuh stack was operational.
+
+## Administrator Credential
+
+After verifying the clean installation, the Wazuh `admin` password was changed using the Wazuh password utility.
+
+Credentials are intentionally not stored in this repository.
+
+## First Agent Enrollment
+
+The first endpoint enrolled into Wazuh was:
+
+```text
+target01
+192.168.1.238
+```
+
+Before installing the agent, connectivity to the Wazuh server was tested:
+
+```bash
+nc -zv 192.168.1.206 1514
+nc -zv 192.168.1.206 1515
+```
+
+Both connections succeeded.
+
+The Wazuh repository was then added to `target01`.
+
+```bash
+sudo apt-get install -y gnupg apt-transport-https
+```
+
+```bash
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+sudo gpg --no-default-keyring \
+  --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg \
+  --import
+```
+
+```bash
+sudo chmod 644 /usr/share/keyrings/wazuh.gpg
+```
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
+sudo tee /etc/apt/sources.list.d/wazuh.list
+```
+
+```bash
+sudo apt-get update
+```
+
+The endpoint was installed and configured to use `wazuh01`:
+
+```bash
+sudo env \
+WAZUH_MANAGER="192.168.1.206" \
+WAZUH_REGISTRATION_SERVER="192.168.1.206" \
+WAZUH_AGENT_NAME="target01" \
+apt-get install -y wazuh-agent
+```
+
+The service was enabled and started:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now wazuh-agent
+```
+
+Agent status was verified with:
+
+```bash
+sudo systemctl is-active wazuh-agent
+```
+
+The Wazuh dashboard then showed `target01` as an active agent.
+
+## Current Result
+
+The environment now contains a functioning all-in-one Wazuh SIEM server with an actively monitored Linux endpoint.
+
+The deployment provides:
+
+- Centralized log analysis
+- Endpoint telemetry
+- File integrity monitoring
+- Linux Audit event collection
+- Authentication monitoring
+- MITRE ATT&CK mappings
+- Security alert correlation
+- Threat Hunting capability
+
+The system has already been used to successfully detect several controlled security events. Those exercises are documented separately in `docs/09-attack-detection-labs.md`.
+
+## Lessons Learned
+
+### Verify guest storage before installing data-intensive services
+
+A virtual disk being 60 GB or 100 GB in Proxmox does not guarantee that the guest operating system is using all of it.
+
+`lsblk`, `vgs`, `lvs`, and `df` should be checked before deploying storage-intensive applications.
+
+### Investigate the first failure instead of repeatedly rerunning installers
+
+The initial Wazuh error appeared to be a credential problem, but log analysis showed that the original cause was disk exhaustion.
+
+The chain was:
+
+```text
+undersized root filesystem
+        ↓
+OpenSearch flood-stage watermark
+        ↓
+security index becomes read-only
+        ↓
+internal-user update fails
+        ↓
+Wazuh installer exits incomplete
+        ↓
+component credential state becomes inconsistent
+```
+
+### Rebuilding can be the correct recovery decision
+
+Because this was a brand-new SIEM with no production data, rebuilding the VM was lower risk and faster than continuing to repair an installation that had failed midway through security configuration.
+
+This preserved the troubleshooting lesson while restoring the environment to a known-good state.
+
+### Do not publish credentials
+
+Installer-generated passwords and other security credentials are excluded from the public repository.
+
+## Commands Used During Deployment and Troubleshooting
+
+```bash
+hostname
+ip -br addr
+ip route
+resolvectl status
+
+df -h /
+lsblk
+sudo pvs
+sudo vgs
+sudo lvs
+sudo lvextend -l +100%FREE -r /dev/ubuntu-vg/ubuntu-lv
+
+sudo apt update
+sudo apt full-upgrade -y
+
+sudo apt install -y qemu-guest-agent
+sudo systemctl start qemu-guest-agent
+
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a
+
+sudo systemctl is-active wazuh-indexer
+sudo systemctl is-active wazuh-manager
+sudo systemctl is-active filebeat
+sudo systemctl is-active wazuh-dashboard
+
+sudo tail -n 80 /var/log/wazuh-install.log
+sudo systemctl status wazuh-indexer --no-pager -l
+sudo journalctl -xeu wazuh-indexer.service --no-pager
+
+sudo ss -tlnp
+
+nc -zv 192.168.1.206 1514
+nc -zv 192.168.1.206 1515
+
+sudo systemctl is-active wazuh-agent
+```
+
+## Skills Demonstrated
+
+- Proxmox virtual machine provisioning
+- Ubuntu Server administration
+- Linux networking
+- Netplan configuration
+- DNS administration
+- LVM troubleshooting and expansion
+- Linux service management with systemd
+- Wazuh SIEM deployment
+- OpenSearch troubleshooting
+- Log analysis
+- Authentication troubleshooting
+- Wazuh endpoint enrollment
+- Incident troubleshooting
+- Root-cause analysis
+- Recovery decision making
+- Security documentation
