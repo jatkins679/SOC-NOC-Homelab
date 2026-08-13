@@ -6,15 +6,16 @@ The documentation in `/docs` explains the configuration, commands, troubleshooti
 
 ## Wazuh Detection Evidence
 
-| Lab | Detection | Rule |
+| File | Detection | Rule |
 |---|---|---:|
-| 1 | SSH brute force | 5712 |
-| 2 | File integrity modification | 550 |
-| 3 | SQL injection attempt | 31103 |
-| 4 | Privileged command monitoring | 80792 |
-| 5a | Local account creation | 5902 |
-| 5b | Local account deletion | 5903 |
+| `01-ssh-bruteforce-rule-5712.png` | SSH brute force | 5712 |
+| `02-fim-rule-550.png` | File integrity modification | 550 |
+| `03-sql-injection-rule-31103.png` | SQL injection attempt | 31103 |
+| `04-audit-sudo-rule-80792.png` | Privileged `sudo` execution | 80792 |
+| `05-audit-id-rule-80792.png` | Privileged `id` execution | 80792 |
+| `06-user-created-rule-5902.png` | Local account creation | 5902 |
+| `07-user-deleted-rule-5903.png` | Local account deletion | 5903 |
 
-Evidence is intentionally limited to information appropriate for a public repository.
+These images were exported from the Wazuh Threat Hunting event details generated during controlled lab exercises.
 
-Passwords, authentication tokens, generated credentials, and other secrets are excluded.
+Evidence is intentionally limited to information appropriate for a public repository. Passwords, authentication tokens, generated credentials, and other secrets are excluded.

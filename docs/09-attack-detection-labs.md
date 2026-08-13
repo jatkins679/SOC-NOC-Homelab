@@ -94,6 +94,10 @@ Frequency:     8
 Decoder:       sshd
 ```
 
+### Detection Evidence
+
+![Wazuh SSH brute-force detection - Rule 5712](../evidence/wazuh/01-ssh-bruteforce-rule-5712.png)
+
 ## MITRE ATT&CK Mapping
 
 ```text
@@ -196,6 +200,10 @@ Because `report_changes="yes"` was enabled, Wazuh also captured the actual text 
 
 The event retained both before and after cryptographic hashes.
 
+### Detection Evidence
+
+![Wazuh file-integrity modification detection - Rule 550](../evidence/wazuh/02-fim-rule-550.png)
+
 ## MITRE ATT&CK Mapping
 
 ```text
@@ -288,6 +296,10 @@ The suspicious URL was preserved:
 ```text
 /users/?id=SELECT+*+FROM+users
 ```
+
+### Detection Evidence
+
+![Wazuh SQL injection attempt detection - Rule 31103](../evidence/wazuh/03-sql-injection-rule-31103.png)
 
 ## MITRE ATT&CK Mapping
 
@@ -421,6 +433,16 @@ EUID:          0
 AUID:          1000
 ```
 
+### Detection Evidence
+
+`sudo` execution:
+
+![Wazuh privileged sudo execution - Rule 80792](../evidence/wazuh/04-audit-sudo-rule-80792.png)
+
+Elevated `id` execution:
+
+![Wazuh privileged id execution - Rule 80792](../evidence/wazuh/05-audit-id-rule-80792.png)
+
 ## Why AUID and EUID Matter
 
 The effective user ID showed that the command executed with root privileges:
@@ -506,6 +528,10 @@ Description:   New user added to the system.
 Decoder:       useradd
 ```
 
+### Detection Evidence
+
+![Wazuh local account creation detection - Rule 5902](../evidence/wazuh/06-user-created-rule-5902.png)
+
 ## MITRE ATT&CK Mapping
 
 ```text
@@ -553,6 +579,10 @@ The event identified:
 User:          soc-test-user
 Agent:         target01
 ```
+
+### Detection Evidence
+
+![Wazuh local account deletion detection - Rule 5903](../evidence/wazuh/07-user-deleted-rule-5903.png)
 
 ## MITRE ATT&CK Mapping
 
