@@ -300,3 +300,47 @@ pvesh get /cluster/resources --type vm
 - Capacity planning
 - Backup-oriented infrastructure design
 - Infrastructure documentation
+
+## Status
+
+- [x] Three Proxmox nodes installed and online
+- [x] Cluster `homelab` created
+- [x] `pve01`, `pve02`, and `pve03` joined to the cluster
+- [x] Three-node quorum verified
+- [x] Cluster management verified from the Proxmox interface
+- [x] Management addressing verified
+- [x] Shared `t-20-backup` storage verified
+- [x] Existing VMs and containers visible across the cluster
+- [x] Cluster resource utilization reviewed
+- [x] Backup strategy retained
+- [x] Ceph intentionally excluded from the design
+
+## Evidence / Follow-Up
+
+The cluster is operational and validated.
+
+Additional portfolio evidence can be added later if useful:
+
+- Screenshot of the three-node Proxmox cluster
+- Screenshot of cluster storage status
+- Screenshot of cluster resource view
+- Network diagram showing `pve01`, `pve02`, `pve03`, `mgmt01`, `dns01`, and `storage01`
+
+These items are supporting evidence rather than blockers for completion.
+
+## Next Phase
+
+The Proxmox cluster now serves as the virtualization foundation for the SOC/NOC environment.
+
+The next major infrastructure work includes:
+
+- Wazuh SIEM deployment
+- Network monitoring
+- Cisco managed-switch integration
+- VLAN segmentation
+- OPNsense routing/firewalling
+- Additional monitored endpoints and security-testing systems
+
+Wazuh deployment is documented separately in:
+
+`docs/06-wazuh-siem.md`

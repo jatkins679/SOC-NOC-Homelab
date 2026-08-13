@@ -505,3 +505,67 @@ sudo systemctl is-active wazuh-agent
 - Root-cause analysis
 - Recovery decision making
 - Security documentation
+
+## Deployment Status
+
+- [x] Dedicated Wazuh VM created
+- [x] Ubuntu Server installed
+- [x] Pi-hole DNS configured
+- [x] QEMU guest agent installed
+- [x] Root filesystem/LVM capacity validated
+- [x] Failed first installation investigated
+- [x] OpenSearch flood-stage root cause identified
+- [x] Rebuild completed with larger virtual disk
+- [x] Wazuh all-in-one installation completed successfully
+- [x] Wazuh indexer active
+- [x] Wazuh manager active
+- [x] Filebeat active
+- [x] Wazuh dashboard active
+- [x] Web dashboard login verified
+- [x] Administrator password changed
+- [x] `target01` enrolled as first monitored endpoint
+- [x] Agent communication verified
+- [x] Threat Hunting validated with real lab alerts
+
+## Detection Validation
+
+The completed Wazuh deployment has successfully detected:
+
+- SSH brute-force activity
+- File-integrity changes
+- SQL-injection-style web requests
+- Commands executed with root privileges
+- Local account creation
+- Local account deletion
+
+Those exercises are documented separately in:
+
+`docs/09-attack-detection-labs.md`
+
+## Evidence / Follow-Up
+
+Supporting evidence available from the build includes:
+
+- Wazuh service status checks
+- Wazuh dashboard screenshots
+- Agent enrollment confirmation
+- Installer troubleshooting logs
+- LVM/storage diagnostics
+- Wazuh alert exports from completed detection labs
+
+Credentials, generated passwords, and other secrets are intentionally excluded from the public repository.
+
+## Next Phase
+
+The Wazuh platform is now operational and ready for additional endpoint and detection work.
+
+Planned future work includes:
+
+- Additional Linux agents
+- Windows endpoint telemetry
+- SSH `authorized_keys` persistence monitoring
+- Custom Wazuh rules
+- Alert tuning
+- Active Response testing
+- Additional MITRE ATT&CK-aligned exercises
+- Integration with the future segmented/VLAN lab design
