@@ -84,6 +84,18 @@ presented as already deployed.
 
 ---
 
+#### [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md)
+
+Maps SOC, NOC, systems, networking, identity, security-monitoring, backup,
+troubleshooting, and documentation competencies to specific hands-on lab work
+and repository evidence.
+
+The matrix separates demonstrated skills from supporting and planned work so the
+portfolio does not claim experience that has not yet been implemented and
+validated.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
