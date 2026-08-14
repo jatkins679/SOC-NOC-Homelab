@@ -129,6 +129,17 @@ change-control, validation, handoff, and closure documentation.
 
 ---
 
+#### [Homelab Operations and Health Checklist](docs/15-homelab-operations-checklist.md)
+
+Defines daily, weekly, monthly, and periodic operational checks for Proxmox,
+Wazuh, Pi-hole DNS, backups, storage, Windows endpoints, Active Directory,
+capacity, telemetry health, maintenance readiness, and recovery testing.
+
+Planned Cisco, Zabbix, OPNsense, and Suricata checks remain explicitly separated
+until those systems are deployed and validated.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
