@@ -118,6 +118,17 @@ notes, service-restoration checks, and reusable incident templates.
 
 ---
 
+#### [SOC/NOC Incident and Change Ticket Examples](docs/14-soc-noc-ticket-examples.md)
+
+Provides concise operations-style ticket examples based on actual homelab work,
+including Wazuh failures, DNS migration, Proxmox cluster validation, Active
+Directory events, detection alerts, storage checks, and escalation notes.
+
+Shows how technical troubleshooting is translated into clear incident,
+change-control, validation, handoff, and closure documentation.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
