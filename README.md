@@ -107,6 +107,17 @@ reusable investigation-notes template.
 
 ---
 
+#### [NOC Network and Service Troubleshooting Runbook](docs/13-noc-troubleshooting-runbook.md)
+
+Documents a repeatable infrastructure troubleshooting workflow for host-down,
+DNS, Internet connectivity, Proxmox cluster, VM/LXC, storage, disk-capacity,
+Linux service, endpoint-monitoring, and Windows domain-connectivity incidents.
+
+Includes incident-priority guidance, dependency mapping, escalation/handoff
+notes, service-restoration checks, and reusable incident templates.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
