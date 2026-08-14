@@ -9,7 +9,7 @@ The goals were to:
 - Manage all three Proxmox hosts from one interface.
 - Provide quorum for normal cluster operation.
 - Make VM and container placement easier to manage.
-- Establish a platform for later SOC/NOC services such as Wazuh, network monitoring, vulnerability scanning, and isolated security-testing systems.
+- Establish a platform for SOC/NOC services such as Wazuh, network monitoring, vulnerability scanning, and isolated security-testing systems.
 - Validate the cluster before making additional infrastructure changes.
 
 This environment is a small home lab built from inexpensive mini PCs and repurposed hardware, so the design emphasizes practical administration and learning rather than enterprise-scale high availability.
@@ -74,6 +74,14 @@ Node 1   pve01
 Node 2   pve02
 Node 3   pve03
 ```
+
+## Why Quorum Matters
+
+With three voting nodes and a quorum requirement of two votes, the cluster can lose one node and still retain a majority. This is one reason a three-node design is more useful for cluster administration practice than a two-node design.
+
+Quorum protects the cluster control plane from conflicting decisions when nodes cannot communicate reliably. In this lab, quorum validation demonstrates that `pve01`, `pve02`, and `pve03` agree on cluster membership and that normal clustered management operations can continue while a majority of votes remains available.
+
+Quorum should not be confused with workload high availability. This lab does not currently use Ceph or Proxmox HA for automatic workload failover; VM and container recovery is handled through local storage, shared backups, and documented restore procedures.
 
 ## Proxmox Version
 
@@ -261,7 +269,7 @@ The lab now has a functioning three-node Proxmox cluster with:
 - Independent DNS and management systems.
 - Capacity for additional SOC/NOC workloads.
 
-The cluster provides the virtualization foundation for the next stages of the lab, including Wazuh SIEM, monitoring, network segmentation, and controlled security-testing systems.
+The cluster now provides the virtualization foundation for the active Wazuh SIEM environment and for remaining work such as network monitoring, network segmentation, and additional controlled security-testing systems.
 
 ## Commands Used for Validation
 
@@ -332,15 +340,12 @@ These items are supporting evidence rather than blockers for completion.
 
 The Proxmox cluster now serves as the virtualization foundation for the SOC/NOC environment.
 
+Wazuh SIEM is already deployed and operational; its implementation is documented separately in `docs/06-wazuh-siem.md`.
+
 The next major infrastructure work includes:
 
-- Wazuh SIEM deployment
 - Network monitoring
 - Cisco managed-switch integration
 - VLAN segmentation
 - OPNsense routing/firewalling
 - Additional monitored endpoints and security-testing systems
-
-Wazuh deployment is documented separately in:
-
-`docs/06-wazuh-siem.md`
