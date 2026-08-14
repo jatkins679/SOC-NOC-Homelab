@@ -70,6 +70,20 @@ with three-node quorum verified.
 
 ## Project Documentation
 
+### Reference Documentation
+
+#### [Asset Inventory](docs/02-asset-inventory.md)
+
+Provides the current working inventory of physical systems, Proxmox nodes,
+virtual machines and containers, infrastructure services, security systems,
+storage, monitoring coverage, IP addressing, and planned assets.
+
+The inventory intentionally distinguishes between operational, DHCP-addressed,
+supporting, historical, and planned assets so future-state systems are not
+presented as already deployed.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
@@ -516,6 +530,7 @@ The documentation numbering is intentionally organized around major project phas
 | Document | Topic | Status |
 |---|---|---|
 | `01-proxmox-backup.md` | Backup and recovery preparation | Complete |
+| `02-asset-inventory.md` | Current physical, virtual, service, and monitoring inventory | Active reference |
 | `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
 | `03-proxmox-cluster-build.md` | Three-node Proxmox cluster | Complete |
 | `04-network-vlans.md` | Managed switching and VLAN design | Planned |
