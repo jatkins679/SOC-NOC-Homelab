@@ -21,7 +21,9 @@ The lab currently includes:
 - Wazuh all-in-one SIEM server
 - Wazuh Linux endpoint monitoring
 - Windows 11 endpoint monitoring with Sysmon and PowerShell Script Block Logging
-- Windows Server staging for Active Directory
+- Windows Server 2022 Active Directory Domain Services and AD-integrated DNS
+- Domain-joined Windows 11 workstation in `corp.home.arpa`
+- Wazuh monitoring of Active Directory account-management events
 - File Integrity Monitoring
 - Linux Auditd integration
 - Apache log monitoring
@@ -45,8 +47,8 @@ The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions 
 | `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
 | `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
 | `kali01` | Security-testing system | `192.168.1.211` |
-| `dc01` | Windows Server / future Active Directory domain controller | `192.168.1.30` |
-| `win11-01` | Windows 11 Pro monitored endpoint | DHCP (`192.168.1.167` during validation) |
+| `dc01` | Windows Server 2022 AD DS / DNS domain controller | `192.168.1.30` |
+| `win11-01` | Windows 11 Pro domain-joined monitored endpoint | DHCP (`192.168.1.167` during validation) |
 
 The Proxmox cluster is named:
 
@@ -204,6 +206,37 @@ Threat Hunting
       ↓
 Analyst validation
 ```
+
+---
+
+#### [10 - Active Directory Lab](docs/10-active-directory-lab.md)
+
+Documents deployment and validation of the Windows Active Directory environment and its integration with the SOC monitoring stack.
+
+The lab includes:
+
+```text
+Domain: corp.home.arpa
+NetBIOS: CORP
+Domain controller: dc01
+Domain-joined endpoint: win11-01
+```
+
+Topics include:
+
+- Active Directory Domain Services
+- AD-integrated DNS
+- Domain and forest validation
+- Windows 11 domain join
+- Secure-channel verification
+- Domain password-policy inspection
+- Active Directory user lifecycle administration
+- Windows Security Event IDs 4720, 4725, and 4726
+- Wazuh detection of domain-account creation
+- Wazuh Rule 60109
+- MITRE ATT&CK T1098 - Account Manipulation
+
+The account-creation exercise validated an end-to-end detection path from an Active Directory administrative action through the Windows Security log and Wazuh to a SIEM alert.
 
 ---
 
@@ -372,6 +405,25 @@ Used for:
 - MITRE ATT&CK mappings
 - Security alert correlation
 
+### Active Directory
+
+The Windows identity lab uses `dc01` as the Active Directory Domain Services and DNS server for:
+
+```text
+corp.home.arpa
+```
+
+The environment is used to practice:
+
+- Domain administration
+- Active Directory DNS
+- Windows domain joins
+- Password-policy enforcement
+- User account lifecycle management
+- Windows Security event analysis
+- Identity-related SIEM detection
+- MITRE ATT&CK mapping for account manipulation
+
 ### Kali Linux
 
 Used as a controlled security-testing system for generating activity against systems owned and operated within the lab.
@@ -434,6 +486,10 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Integrate Linux Auditd
 - [x] Validate privileged-command monitoring
 - [x] Validate local account creation/deletion monitoring
+- [x] Deploy Windows Server 2022 Active Directory Domain Services
+- [x] Create the `corp.home.arpa` Active Directory domain
+- [x] Join `win11-01` to the domain and verify the secure channel
+- [x] Validate Active Directory account-creation detection in Wazuh
 
 ### In Progress / Planned
 
@@ -442,7 +498,6 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [ ] Design and implement VLANs
 - [ ] Deploy OPNsense
 - [ ] Add additional Linux agents
-- [ ] Add Windows endpoint telemetry
 - [ ] Monitor SSH `authorized_keys`
 - [ ] Create custom Wazuh rules
 - [ ] Test Wazuh Active Response
@@ -454,7 +509,7 @@ I am intentionally not documenting planned VLANs as though they already exist.
 
 ---
 
-## Planned Documentation
+## Documentation Status
 
 The documentation numbering is intentionally organized around major project phases.
 
@@ -467,8 +522,9 @@ The documentation numbering is intentionally organized around major project phas
 | `05-opnsense.md` | OPNsense routing/firewalling | Planned |
 | `06-wazuh-siem.md` | Wazuh deployment | Complete |
 | `07-zabbix-monitoring.md` | Infrastructure monitoring | Planned |
-| `08-windows-telemetry.md` | Windows endpoint telemetry | Planned |
+| `08-windows-telemetry.md` | Windows endpoint telemetry | Complete |
 | `09-attack-detection-labs.md` | SOC detection exercises | Active / documented |
+| `10-active-directory-lab.md` | Active Directory and identity monitoring | Complete |
 
 ---
 
