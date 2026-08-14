@@ -610,6 +610,191 @@ The combination of account-creation and account-deletion telemetry demonstrated 
 
 ---
 
+
+---
+
+# Lab 6 - Windows Sysmon PowerShell Process Detection
+
+## Objective
+
+Add Windows endpoint process telemetry to the lab and verify that Sysmon events from `win11-01` could be collected and correlated by Wazuh.
+
+## Test Activity
+
+Controlled PowerShell activity was generated on `win11-01`:
+
+```powershell
+powershell.exe -NoProfile -Command "Get-Date"
+```
+
+## Endpoint Validation
+
+Sysmon recorded the activity in:
+
+```text
+Microsoft-Windows-Sysmon/Operational
+```
+
+as:
+
+```text
+Event ID: 1 - Process Create
+```
+
+The event contained process-analysis fields including the executable path, command line, parent process, user, integrity level, process identifiers, and executable hashes.
+
+## Wazuh Detection
+
+Wazuh received the Sysmon event from agent `win11-01` and generated:
+
+```text
+Rule ID:       92027
+Rule Level:    4
+Description:   Powershell process spawned powershell instance
+```
+
+The alert included the original command line:
+
+```text
+powershell.exe -NoProfile -Command Get-Date
+```
+
+## MITRE ATT&CK Mapping
+
+```text
+Technique:     T1059.001 - PowerShell
+Tactic:        Execution
+```
+
+## Analyst Assessment
+
+The exercise demonstrated the difference between merely knowing that PowerShell was used and having detailed process telemetry showing exactly which executable ran, how it was invoked, which account executed it, and what process spawned it.
+
+In a production investigation, an analyst would compare the command line and parent/child relationship with the user's expected activity, review related network connections and file activity, and correlate the event with additional endpoint and authentication telemetry.
+
+## Evidence
+
+![Windows Sysmon PowerShell detection - Rule 92027](../evidence/wazuh/08-windows-sysmon-powershell-rule-92027.png)
+
+## Skills Demonstrated
+
+- Windows endpoint monitoring
+- Sysmon deployment and analysis
+- Process-creation investigation
+- Command-line analysis
+- Parent/child process analysis
+- Wazuh Windows event collection
+- MITRE ATT&CK mapping
+- SOC endpoint triage
+
+---
+
+# Lab 7 - PowerShell Script Block and Registry Modification Detection
+
+## Objective
+
+Enable PowerShell Script Block Logging on `win11-01`, collect Event ID `4104` with Wazuh, and validate a built-in detection for controlled registry modification through PowerShell.
+
+## Telemetry Configuration
+
+PowerShell Script Block Logging was enabled and verified with:
+
+```powershell
+Get-ItemProperty `
+  "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging"
+```
+
+The policy returned:
+
+```text
+EnableScriptBlockLogging : 1
+```
+
+The Wazuh agent was configured to collect:
+
+```text
+Microsoft-Windows-PowerShell/Operational
+```
+
+using the `eventchannel` log format.
+
+## Test Activity
+
+A controlled registry value was created:
+
+```powershell
+New-ItemProperty `
+  -Path "HKLM:\Software\Microsoft\ADs" `
+  -Name "NoofAlerts" `
+  -Value 2
+```
+
+## Endpoint Validation
+
+Windows recorded the command in the PowerShell Operational log as:
+
+```text
+Event ID: 4104
+Creating Scriptblock text
+```
+
+The event preserved the actual script block containing the `New-ItemProperty` command.
+
+## Wazuh Detection
+
+Wazuh generated:
+
+```text
+Rule ID:       91843
+Rule Level:    3
+Description:   Powershell executed "New-ItemProperty -Path".
+               Possible addition of new item to registry
+```
+
+## MITRE ATT&CK Mapping
+
+```text
+T1059.001 - PowerShell
+T1112     - Modify Registry
+
+Tactics:
+Execution
+Defense Evasion
+```
+
+## Analyst Assessment
+
+Registry modification through PowerShell may be legitimate administrative activity, but it can also be used for persistence, defense evasion, or configuration changes associated with malicious execution.
+
+Script Block Logging is especially useful because it preserves the PowerShell content itself rather than only recording that a PowerShell process existed.
+
+An analyst would review the user context, full script block, target registry path, surrounding process activity, and whether the modification was authorized.
+
+## Cleanup
+
+The controlled test value was removed after the alert was validated:
+
+```powershell
+Remove-ItemProperty `
+  -Path "HKLM:\Software\Microsoft\ADs" `
+  -Name "NoofAlerts"
+```
+
+## Evidence
+
+![PowerShell registry modification detection - Rule 91843](../evidence/wazuh/09-powershell-registry-rule-91843.png)
+
+## Skills Demonstrated
+
+- PowerShell security logging
+- Windows Event ID 4104 analysis
+- Script Block Logging configuration
+- Registry-change investigation
+- Wazuh Windows event-channel collection
+- MITRE ATT&CK mapping
+- Endpoint telemetry validation
+- SOC alert triage
+
 # Detection Summary
 
 | Lab | Detection | Rule | Level | MITRE |
@@ -620,6 +805,8 @@ The combination of account-creation and account-deletion telemetry demonstrated 
 | 4 | Root command execution | 80792 | 3 | - |
 | 5a | Local account created | 5902 | 8 | T1136 |
 | 5b | Local account deleted | 5903 | 3 | T1531 |
+| 6 | Windows Sysmon PowerShell process | 92027 | 4 | T1059.001 |
+| 7 | PowerShell registry modification | 91843 | 3 | T1059.001, T1112 |
 
 ## Telemetry Sources Used
 
@@ -631,6 +818,8 @@ Apache access logs
 Wazuh Syscheck / FIM
 Linux Auditd
 useradd / userdel journald events
+Sysmon / Windows event channel
+PowerShell Operational Event ID 4104
 ```
 
 This was useful because the detections were not dependent on a single type of log.
@@ -659,6 +848,8 @@ The Wazuh lab has now demonstrated successful detection of:
 - Privileged command execution
 - Account creation
 - Account deletion
+- Windows Sysmon process creation
+- PowerShell Script Block registry modification
 
 The complete telemetry path has been validated:
 
@@ -693,6 +884,11 @@ Analyst investigation
 - [x] AUID/EUID attribution validated
 - [x] Local account creation detected
 - [x] Local account deletion detected
+- [x] Windows 11 endpoint enrolled in Wazuh
+- [x] Sysmon installed and collected by Wazuh
+- [x] Sysmon Event ID 1 / Rule 92027 validated
+- [x] PowerShell Script Block Logging enabled
+- [x] Event ID 4104 / Rule 91843 validated
 - [x] MITRE ATT&CK mappings reviewed
 - [x] Wazuh Threat Hunting used for event investigation
 
@@ -707,6 +903,7 @@ Evidence retained from the completed labs includes:
 - FIM event details and file diffs
 - Auditd event details
 - Account creation/deletion event exports
+- Windows Sysmon / PowerShell alert exports
 
 Public documentation should not include passwords, tokens or other sensitive credentials.
 
@@ -719,7 +916,7 @@ Future detection exercises may include:
 - Suspicious process execution
 - Malware simulation using safe test artifacts
 - Custom Wazuh rules
-- Windows endpoint telemetry
+- Active Directory and domain-joined Windows telemetry
 - Network-based detection
 - Active Response testing
 - Alert tuning and false-positive reduction
@@ -740,3 +937,6 @@ Future detection exercises may include:
 - SOC alert triage
 - Evidence validation
 - Security incident documentation
+- Windows endpoint telemetry analysis
+- Sysmon process analysis
+- PowerShell Script Block Logging analysis

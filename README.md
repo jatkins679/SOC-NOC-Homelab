@@ -20,6 +20,8 @@ The lab currently includes:
 - Ubuntu target/test system
 - Wazuh all-in-one SIEM server
 - Wazuh Linux endpoint monitoring
+- Windows 11 endpoint monitoring with Sysmon and PowerShell Script Block Logging
+- Windows Server staging for Active Directory
 - File Integrity Monitoring
 - Linux Auditd integration
 - Apache log monitoring
@@ -43,6 +45,8 @@ The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions 
 | `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
 | `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
 | `kali01` | Security-testing system | `192.168.1.211` |
+| `dc01` | Windows Server / future Active Directory domain controller | `192.168.1.30` |
+| `win11-01` | Windows 11 Pro monitored endpoint | DHCP (`192.168.1.167` during validation) |
 
 The Proxmox cluster is named:
 
@@ -150,6 +154,21 @@ Topics include:
 This document also records an important deployment failure in which Ubuntu had not allocated the full virtual disk to the root logical volume. OpenSearch crossed its disk flood-stage threshold, placed its security index into read-only mode, and caused the Wazuh installer to fail during internal-user configuration.
 
 Rather than hiding the failed deployment, the troubleshooting process is documented because it demonstrates the diagnostic workflow that led to the root cause and recovery decision.
+
+---
+
+#### [08 - Windows Endpoint Telemetry](docs/08-windows-telemetry.md)
+
+Documents deployment and validation of Windows security telemetry on `win11-01`.
+
+Topics include:
+
+- Windows Wazuh agent deployment and troubleshooting
+- Sysmon installation and Event ID 1 process telemetry
+- PowerShell Script Block Logging and Event ID 4104
+- Wazuh Rule 92027
+- Wazuh Rule 91843
+- MITRE ATT&CK mapping for PowerShell and registry modification
 
 ---
 
@@ -406,6 +425,9 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Verify shared backup storage
 - [x] Deploy Wazuh SIEM
 - [x] Enroll first Linux Wazuh agent
+- [x] Enroll Windows Wazuh agent
+- [x] Configure Windows telemetry
+- [x] Validate Sysmon and PowerShell detections
 - [x] Validate SSH brute-force detection
 - [x] Validate File Integrity Monitoring
 - [x] Validate Apache / SQL-injection-style detection

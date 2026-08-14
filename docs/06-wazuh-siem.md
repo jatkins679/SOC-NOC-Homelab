@@ -322,6 +322,30 @@ After verifying the clean installation, the Wazuh `admin` password was changed u
 
 Credentials are intentionally not stored in this repository.
 
+## Dashboard Credential Recovery
+
+After a later Wazuh server restart, the dashboard was available but the previously retained installation credential no longer authenticated successfully.
+
+The original installer archive was located with:
+
+```bash
+sudo find / -name wazuh-install-files.tar 2>/dev/null
+```
+
+The archived `admin` credential was recovered for comparison, but it did not match the active credential state.
+
+Rather than reinstalling Wazuh, the supported password-management utility was used to rotate only the `admin` account:
+
+```bash
+sudo bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh -u admin
+```
+
+Dependent services were refreshed and dashboard authentication was verified successfully.
+
+No password or generated credential is stored in this repository.
+
+This recovery demonstrated a useful operational principle: verify whether a stored credential reflects the live authentication state before assuming a service is broken.
+
 ## First Agent Enrollment
 
 The first endpoint enrolled into Wazuh was:
@@ -391,9 +415,52 @@ sudo systemctl is-active wazuh-agent
 
 The Wazuh dashboard then showed `target01` as an active agent.
 
+## Windows Agent Enrollment and Troubleshooting
+
+A Windows 11 Pro endpoint was added as a second Wazuh agent:
+
+```text
+Agent name: win11-01
+Address during testing: 192.168.1.167
+Agent ID: 002
+```
+
+The Windows agent deployment initially failed to create the expected service. The installation state was checked with:
+
+```powershell
+Get-Service *wazuh*
+Test-Path "C:\Program Files (x86)\ossec-agent"
+```
+
+The missing service and `False` path result confirmed that the MSI had not actually installed the agent.
+
+After reinstalling the MSI, the service was present but initially could not be controlled from a non-elevated shell. Reopening PowerShell as Administrator resolved the service-control issue.
+
+Final service state was verified with:
+
+```powershell
+Get-Service WazuhSvc
+```
+
+and manager connectivity was confirmed with:
+
+```powershell
+Test-NetConnection 192.168.1.206 -Port 1514
+```
+
+which returned:
+
+```text
+TcpTestSucceeded : True
+```
+
+The dashboard then showed `win11-01` as an active endpoint.
+
+Additional Windows telemetry configuration is documented in `docs/08-windows-telemetry.md`.
+
 ## Current Result
 
-The environment now contains a functioning all-in-one Wazuh SIEM server with an actively monitored Linux endpoint.
+The environment now contains a functioning all-in-one Wazuh SIEM server with actively monitored Linux and Windows endpoints.
 
 The deployment provides:
 
@@ -402,6 +469,8 @@ The deployment provides:
 - File integrity monitoring
 - Linux Audit event collection
 - Authentication monitoring
+- Windows Sysmon telemetry
+- PowerShell Script Block Logging
 - MITRE ATT&CK mappings
 - Security alert correlation
 - Threat Hunting capability
@@ -501,6 +570,10 @@ sudo systemctl is-active wazuh-agent
 - Log analysis
 - Authentication troubleshooting
 - Wazuh endpoint enrollment
+- Windows endpoint enrollment
+- Windows service troubleshooting
+- Sysmon integration
+- PowerShell telemetry integration
 - Incident troubleshooting
 - Root-cause analysis
 - Recovery decision making
@@ -524,6 +597,9 @@ sudo systemctl is-active wazuh-agent
 - [x] Web dashboard login verified
 - [x] Administrator password changed
 - [x] `target01` enrolled as first monitored endpoint
+- [x] `win11-01` enrolled as Windows monitored endpoint
+- [x] Sysmon telemetry received from Windows
+- [x] PowerShell Script Block telemetry received from Windows
 - [x] Agent communication verified
 - [x] Threat Hunting validated with real lab alerts
 
@@ -537,6 +613,8 @@ The completed Wazuh deployment has successfully detected:
 - Commands executed with root privileges
 - Local account creation
 - Local account deletion
+- PowerShell process execution on Windows
+- PowerShell registry modification on Windows
 
 Those exercises are documented separately in:
 
@@ -562,7 +640,7 @@ The Wazuh platform is now operational and ready for additional endpoint and dete
 Planned future work includes:
 
 - Additional Linux agents
-- Windows endpoint telemetry
+- Active Directory and domain-joined Windows telemetry
 - SSH `authorized_keys` persistence monitoring
 - Custom Wazuh rules
 - Alert tuning

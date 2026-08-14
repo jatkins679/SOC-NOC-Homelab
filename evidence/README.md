@@ -15,6 +15,8 @@ The documentation in `/docs` explains the configuration, commands, troubleshooti
 | `05-audit-id-rule-80792.png` | Privileged `id` execution | 80792 |
 | `06-user-created-rule-5902.png` | Local account creation | 5902 |
 | `07-user-deleted-rule-5903.png` | Local account deletion | 5903 |
+| `08-windows-sysmon-powershell-rule-92027.png` | Windows Sysmon PowerShell process | 92027 |
+| `09-powershell-registry-rule-91843.png` | PowerShell registry modification | 91843 |
 
 These images were exported from the Wazuh Threat Hunting event details generated during controlled lab exercises.
 
