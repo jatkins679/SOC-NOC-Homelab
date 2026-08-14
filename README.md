@@ -96,6 +96,17 @@ validated.
 
 ---
 
+#### [SOC Alert Triage and Investigation Playbook](docs/12-soc-alert-triage-playbook.md)
+
+Documents the repeatable analyst workflow used to validate, classify, scope,
+prioritize, investigate, remediate, and verify security alerts.
+
+Includes worked examples for SSH brute force, file-integrity changes,
+SQL-injection-style requests, and Active Directory account creation, plus a
+reusable investigation-notes template.
+
+---
+
 ### Completed
 
 #### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
