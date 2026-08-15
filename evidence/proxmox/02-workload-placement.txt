@@ -1,0 +1,27 @@
+Proxmox workload placement after node expansion
+Date: 2026-08-15
+
+pve01
+- VM 100: dc01
+- VM 101: win11-01
+- VM 210: docker
+- LXC 105: sqlserver2025
+- LXC 200: apache-guacamole
+- LXC 201: pialert
+
+pve02
+- VM 300: kali01
+- VM 400: target01
+
+pve03
+- VM 500: wazuh01
+
+pve04
+- VM 320: vulnscan01
+
+Validation summary:
+- wazuh01 guest agent responded at 192.168.1.206.
+- vulnscan01 guest agent responded at 192.168.1.247.
+- VM disks remain on local node storage.
+- t-20-backup provides shared backup storage.
+- Ceph and automatic Proxmox HA are not deployed.

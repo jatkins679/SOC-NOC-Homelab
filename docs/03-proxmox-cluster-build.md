@@ -1,8 +1,8 @@
-# Proxmox Three-Node Cluster Build and Validation
+# Proxmox Cluster Build, Expansion, and Validation
 
 ## Objective
 
-The next stage of the homelab rebuild was to consolidate three Proxmox VE hosts into a single manageable cluster.
+The initial stage of the homelab rebuild consolidated three Proxmox VE hosts into a single manageable cluster. The cluster was later expanded to four nodes with the addition of `pve04`.
 
 The goals were to:
 
@@ -22,13 +22,14 @@ The resulting Proxmox cluster is named:
 homelab
 ```
 
-It contains three nodes:
+It was initially built with three nodes and now contains four:
 
 | Node | Management IP |
 |---|---|
 | pve01 | 192.168.1.10 |
 | pve02 | 192.168.1.11 |
 | pve03 | 192.168.1.12 |
+| pve04 | 192.168.1.13 |
 
 An independent Linux management system, `mgmt01`, is kept outside the cluster for administrative access.
 
@@ -257,12 +258,100 @@ Instead:
 
 This is more appropriate for the scale and purpose of the environment.
 
+
+## Four-Node Expansion - August 2026
+
+The original three-node validation above is retained as build history. The
+current cluster was expanded by installing Proxmox VE on a repurposed Dell
+Precision 5550 and joining it as `pve04`.
+
+`pve04` provides substantially more compute capacity than the three small-form-
+factor nodes:
+
+| Item | Verified value |
+|---|---|
+| Model | Dell Precision 5550 |
+| Processor | Intel Core i7-10850H; 6 cores / 12 threads |
+| Memory | 32 GiB |
+| Local storage | 256 GB Samsung NVMe |
+| Management address | `192.168.1.13/24` |
+| Network adapter | Realtek RTL8153B USB Gigabit Ethernet using the Linux `r8152` driver |
+
+The mobile-workstation chassis does not provide a built-in RJ45 port, so the
+current management bridge uses a USB Gigabit Ethernet adapter. A second adapter
+may later separate management and lab traffic after the managed Cisco switch is
+installed. That future design is not represented as operational yet.
+
+Before the node joined the cluster, hostnames were made resolvable on every node
+through consistent `/etc/hosts` entries. The Proxmox repositories were also
+changed from the subscription-only enterprise repositories to the supported
+no-subscription repository used by this lab.
+
+All four nodes were then updated and rebooted one at a time. The verified common
+software state was:
+
+```text
+pve-manager/9.2.10
+kernel 7.0.14-12-pve
+```
+
+Rolling maintenance preserved cluster quorum while avoiding a simultaneous
+outage of all hosts.
+
+After `pve04` joined, cluster validation reported:
+
+```text
+Name:             homelab
+Config Version:   4
+Transport:        knet
+Secure auth:      on
+Nodes:            4
+Expected votes:   4
+Total votes:      4
+Quorum:           3
+Quorate:          Yes
+```
+
+With four voting nodes, the cluster requires three votes. It can therefore
+tolerate one unavailable node while retaining quorum. Quorum still does not
+provide automatic VM failover because the lab uses local VM disks and does not
+run Proxmox HA with shared or distributed production storage.
+
+Two workloads were moved offline using verified backups as recovery protection:
+
+| Workload | VM ID | Previous node | Current node | Result |
+|---|---:|---|---|---|
+| `vulnscan01` | 320 | `pve03` | `pve04` | Guest agent responded; address remained `192.168.1.247` |
+| `wazuh01` | 500 | `pve01` | `pve03` | Guest agent responded; address remained `192.168.1.206` |
+
+This placement moves vulnerability-scanning demand to the higher-capacity
+Precision host and reduces workload concentration on `pve01`.
+
+Startup policy was reviewed after migration. Core services start automatically,
+while interactive testing and resource-intensive lab workloads remain manual:
+
+| Node | Workload | Startup policy |
+|---|---|---|
+| `pve01` | `dc01` | Automatic; order 1 |
+| `pve01` | `apache-guacamole` | Automatic; order 2 |
+| `pve01` | `pialert` | Automatic; order 3 |
+| `pve03` | `wazuh01` | Automatic; order 1 |
+| Various | Kali, target, vulnerability scanner, Windows endpoint, Docker, SQL Server | Manual unless needed |
+
+Because `pve04` is a laptop-form-factor host, systemd lid actions were set to
+`ignore` and sleep, suspend, hibernate, and hybrid-sleep targets were masked.
+A closed-lid validation confirmed that the host remained reachable and retained
+cluster membership.
+
+Detailed commands, validation output, and the final placement record are in
+[`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md).
+
 ## Current Result
 
-The lab now has a functioning three-node Proxmox cluster with:
+The lab now has a functioning four-node Proxmox cluster with:
 
-- Three online nodes.
-- Working quorum.
+- Four online nodes.
+- Three-vote quorum verified.
 - Centralized Proxmox management.
 - Shared backup storage.
 - Existing VMs and containers retained.
@@ -311,10 +400,14 @@ pvesh get /cluster/resources --type vm
 
 ## Status
 
-- [x] Three Proxmox nodes installed and online
+- [x] Initial three Proxmox nodes installed and online
 - [x] Cluster `homelab` created
-- [x] `pve01`, `pve02`, and `pve03` joined to the cluster
-- [x] Three-node quorum verified
+- [x] `pve01`, `pve02`, and `pve03` joined to the initial cluster
+- [x] `pve04` installed and joined as the fourth node
+- [x] Four-node quorum verified
+- [x] All nodes standardized on Proxmox VE 9.2.10 and kernel 7.0.14-12-pve
+- [x] `vulnscan01` and `wazuh01` migrated and validated
+- [x] Essential-service startup policy reviewed
 - [x] Cluster management verified from the Proxmox interface
 - [x] Management addressing verified
 - [x] Shared `t-20-backup` storage verified
@@ -329,7 +422,7 @@ The cluster is operational and validated.
 
 Additional portfolio evidence can be added later if useful:
 
-- Screenshot of the three-node Proxmox cluster
+- Screenshot of the four-node Proxmox cluster
 - Screenshot of cluster storage status
 - Screenshot of cluster resource view
 - Network diagram showing `pve01`, `pve02`, `pve03`, `mgmt01`, `dns01`, and `storage01`

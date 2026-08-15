@@ -1,0 +1,20 @@
+Proxmox four-node quorum validation
+Date: 2026-08-15
+
+Cluster name:     homelab
+Config Version:   4
+Transport:        knet
+Secure auth:      on
+Nodes:            4
+Expected votes:   4
+Total votes:      4
+Quorum:           3
+Quorate:          Yes
+
+Members:
+- pve01 - 192.168.1.10
+- pve02 - 192.168.1.11
+- pve03 - 192.168.1.12
+- pve04 - 192.168.1.13
+
+Sensitive host fingerprints, serial numbers, and credentials are omitted.

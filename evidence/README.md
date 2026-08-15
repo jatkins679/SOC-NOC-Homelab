@@ -21,3 +21,13 @@ The documentation in `/docs` explains the configuration, commands, troubleshooti
 These images were exported from the Wazuh Threat Hunting event details generated during controlled lab exercises.
 
 Evidence is intentionally limited to information appropriate for a public repository. Passwords, authentication tokens, generated credentials, and other secrets are excluded.
+
+## Proxmox Cluster Evidence
+
+| File | Evidence |
+|---|---|
+| `proxmox/01-four-node-quorum.txt` | Sanitized four-node membership and quorum result |
+| `proxmox/02-workload-placement.txt` | Sanitized workload placement after rebalancing |
+
+The text evidence omits hardware serial numbers, MAC addresses, SSH
+fingerprints, credentials, and authentication material.

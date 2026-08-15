@@ -1,80 +1,62 @@
 # Current Homelab Architecture
 
-This diagram reflects the currently implemented lab before the planned Cisco managed-switch, VLAN, and OPNsense phase.
+This diagram reflects the implemented lab after the `pve04` expansion and
+workload rebalancing, but before the planned Cisco managed-switch, VLAN, and
+OPNsense phase.
 
 ```mermaid
 flowchart TB
-    WAN[AT&T Fiber / Gateway\n192.168.1.254] --> SW[TRENDnet TEG-S160G\nCurrent unmanaged switch]
+    WAN["AT&T Fiber / Gateway\n192.168.1.254"] --> SW["TRENDnet TEG-S160G\nCurrent unmanaged switch"]
 
-    SW --> PVE1[pve01\nProxmox VE\n192.168.1.10]
-    SW --> PVE2[pve02\nProxmox VE\n192.168.1.11]
-    SW --> PVE3[pve03\nProxmox VE\n192.168.1.12]
-    SW --> MGMT[mgmt01\nIndependent management host\n192.168.1.5]
-    SW --> DNS[dns01\nPi-hole / DNS\n192.168.1.20]
-    SW --> STORE[storage01\nDell PowerEdge T20\nMedia / CIFS backup]
+    SW --> PVE1["pve01\n192.168.1.10"]
+    SW --> PVE2["pve02\n192.168.1.11"]
+    SW --> PVE3["pve03\n192.168.1.12"]
+    SW --> PVE4["pve04 - Precision 5550\n192.168.1.13"]
+    SW --> INFRA["mgmt01 / dns01 / storage01"]
 
-    PVE1 --> WAZUH[wazuh01 - VM 500\nWazuh SIEM\n192.168.1.206]
-    PVE1 --> DOCKER[docker - VM 210]
-    PVE1 --> SQL[sqlserver2025 - LXC 105]
-    PVE1 --> GUAC[apache-guacamole - LXC 200]
-    PVE1 --> PIALERT[pialert - LXC 201]
+    PVE1 --> PVE1WORK["dc01, win11-01, docker\nsqlserver2025, Guacamole, PiAlert"]
+    PVE2 --> PVE2WORK["kali01 / target01"]
+    PVE3 --> WAZUH["wazuh01 - VM 500\n192.168.1.206"]
+    PVE4 --> VULN["vulnscan01 - VM 320\n192.168.1.247"]
 
-    PVE2 --> KALI[kali01\nSecurity testing\n192.168.1.211]
-    PVE2 --> TARGET[target01\nUbuntu monitored endpoint\n192.168.1.238]
+    INFRA -. "CIFS backups" .-> PVE1
+    INFRA -. "CIFS backups" .-> PVE2
+    INFRA -. "CIFS backups" .-> PVE3
+    INFRA -. "CIFS backups" .-> PVE4
 
-    PVE3 --> VULN[vulnscan01\nVulnerability scanning]
-
-    STORE -. CIFS backup .-> PVE1
-    STORE -. CIFS backup .-> PVE2
-    STORE -. CIFS backup .-> PVE3
-
-    TARGET -- Wazuh agent telemetry --> WAZUH
-    KALI -- Controlled test activity --> TARGET
-    DNS -. DNS .-> WAZUH
-    DNS -. DNS .-> TARGET
+    PVE2WORK -- "Wazuh telemetry" --> WAZUH
+    PVE1WORK -- "Windows and service telemetry" --> WAZUH
 ```
 
 ## Current State
 
-- `pve01`, `pve02`, and `pve03` form the `homelab` Proxmox cluster.
+- `pve01`, `pve02`, `pve03`, and `pve04` form the `homelab` Proxmox cluster.
+- The four-node cluster requires three votes for quorum and was verified quorate.
+- `pve04` is a Dell Precision 5550 using a Realtek USB Gigabit Ethernet adapter.
 - `mgmt01` remains independent of the cluster for administrative access.
-- `dns01` provides DNS using Pi-hole.
-- `storage01` provides media/storage services and shared Proxmox backup storage.
-- `wazuh01` provides SIEM and endpoint monitoring.
-- `target01` is the first actively monitored Linux endpoint.
-- `kali01` is used for controlled security-testing activity against lab-owned targets.
+- `dns01` provides Pi-hole DNS at `192.168.1.20`.
+- `storage01` provides shared `t-20-backup` CIFS storage.
+- `wazuh01` runs on `pve03`; `vulnscan01` runs on `pve04`.
+- VM disks remain local to each node; backups provide recovery protection.
+- This design does not claim Ceph, Proxmox HA, or automatic workload failover.
+
+## Security and Identity Paths
+
+| Source | Function | Destination |
+|---|---|---|
+| `win11-01` | Sysmon, PowerShell, and Windows Security telemetry | `wazuh01` |
+| `dc01` | Active Directory security telemetry | `wazuh01` |
+| `target01` | Linux, Apache, Auditd, and FIM telemetry | `wazuh01` |
+| `kali01` | Controlled test activity | Lab-owned target systems |
+| `vulnscan01` | Authorized vulnerability scanning | Lab-owned systems |
+
+The `corp.home.arpa` Active Directory domain is operational. `dc01` provides AD
+DS and AD-integrated DNS, and `win11-01` is domain joined with its secure channel
+validated.
 
 ## Planned Network Phase
 
-The current unmanaged switch will later be supplemented/replaced in the lab design by a managed Cisco switch. VLAN segmentation and OPNsense will be documented only after those components are actually implemented.
-
----
-
-## Windows Security Telemetry Expansion - August 2026
-
-The current lab now also includes two Windows systems on `pve01`:
-
-| System | Role | Current state |
-|---|---|---|
-| `dc01` | Windows Server / future Active Directory domain controller | Static `192.168.1.30`; AD DS role installed; not yet promoted |
-| `win11-01` | Windows 11 Pro monitored endpoint | DHCP; `192.168.1.167` during validation; Wazuh agent, Sysmon and PowerShell Script Block Logging enabled |
-
-Current Windows security-telemetry path:
-
-```text
-win11-01
-   |
-   +-- Sysmon Event ID 1
-   +-- PowerShell Event ID 4104
-   |
-   v
-Wazuh Agent
-   |
-   v
-wazuh01
-   |
-   +-- Rule 92027 -> T1059.001 PowerShell
-   +-- Rule 91843 -> T1059.001 PowerShell / T1112 Modify Registry
-```
-
-`dc01` and `win11-01` are currently staged for the Active Directory phase. `win11-01` remains standalone until `dc01` is promoted and AD DNS is configured.
+The current unmanaged switch will later be supplemented or replaced in the lab
+design by a managed Cisco switch. VLAN segmentation, a second `pve04` Ethernet
+adapter, and OPNsense routing will be documented only after those components are
+implemented and validated.

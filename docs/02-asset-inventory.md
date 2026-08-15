@@ -67,7 +67,7 @@ as operational in this inventory.
 
 # 2. Proxmox Cluster
 
-The primary virtualization platform is the three-node Proxmox VE cluster:
+The primary virtualization platform is the four-node Proxmox VE cluster:
 
 ```text
 homelab
@@ -78,15 +78,16 @@ homelab
 | `pve01` | Acemagic S1, Intel N97, 16 GB RAM, ~512 GB storage | `192.168.1.10` | Proxmox VE cluster node | **Operational** |
 | `pve02` | Acemagic S1, Intel N95, 16 GB RAM, ~512 GB storage | `192.168.1.11` | Proxmox VE cluster node | **Operational** |
 | `pve03` | Ace Magician T8PLUS, Intel N95, 16 GB RAM, ~512 GB storage | `192.168.1.12` | Proxmox VE cluster node | **Operational** |
+| `pve04` | Dell Precision 5550, Intel Core i7-10850H, 32 GB RAM, 256 GB NVMe | `192.168.1.13` | Proxmox VE cluster node; USB Gigabit Ethernet | **Operational** |
 
 Verified cluster state:
 
 ```text
 Cluster name:     homelab
-Nodes:            3
-Expected votes:   3
-Total votes:      3
-Quorum:           2
+Nodes:            4
+Expected votes:   4
+Total votes:      4
+Quorum:           3
 Quorate:          Yes
 Transport:        knet
 Secure auth:      on
@@ -94,6 +95,23 @@ Secure auth:      on
 
 The cluster currently uses local node storage for VM/LXC disks and shared remote
 backup storage rather than Ceph.
+
+## Current Proxmox Workload Placement
+
+The following placement was verified after the fourth node was added and the
+selected workloads were migrated:
+
+| Node | Current workloads |
+|---|---|
+| `pve01` | `dc01`, `win11-01`, `docker`, `sqlserver2025`, `apache-guacamole`, `pialert` |
+| `pve02` | `kali01`, `target01` |
+| `pve03` | `wazuh01` |
+| `pve04` | `vulnscan01` |
+
+VM disks remain on each node's local storage. The shared `t-20-backup` CIFS
+target provides backup-based recovery; the cluster does not use Ceph or claim
+automatic workload failover.
+
 
 ---
 
@@ -134,6 +152,7 @@ validated.
 |---|---|---:|---|---|---|
 | `kali01` | Kali Linux | `192.168.1.211` | Controlled security-testing workstation | Nmap, attack simulation, packet/security testing | **Operational** |
 | `target01` | Ubuntu Linux | `192.168.1.238` | Monitored Linux / Apache target | Wazuh, Apache logging, controlled attack detection | **Operational** |
+| `vulnscan01` | Linux VM | `192.168.1.247` | Vulnerability-scanning platform | Authorized scanning of lab-owned systems | **Operational** |
 
 `target01` has been used to generate and observe activity including:
 
@@ -170,6 +189,7 @@ Detection / investigation / evidence
 |---|---|---:|---|---|
 | `apache-guacamole` | Proxmox LXC | `192.168.1.151` | Browser-based remote access gateway | **Operational** |
 | `sqlserver2025` | Ubuntu LXC / Microsoft SQL Server | DHCP; `192.168.1.165` observed | SQL Server learning / application service | **Operational / DHCP** |
+| `pialert` | Proxmox LXC | Verify current address | Network-presence and device-awareness service | **Operational** |
 
 The Guacamole service is used for browser-based remote access to lab systems.
 
@@ -276,6 +296,7 @@ architecture.
 | `pve01` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `pve02` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `pve03` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
+| `pve04` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `dns01` | Additional monitoring possible | N/A | N/A | Pi-hole/Linux logs | Planned |
 | `storage01` | Additional monitoring possible | N/A | Depends on host OS | Host/service logs | Planned |
 
@@ -294,12 +315,14 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.10` | `pve01` |
 | `192.168.1.11` | `pve02` |
 | `192.168.1.12` | `pve03` |
+| `192.168.1.13` | `pve04` |
 | `192.168.1.20` | `dns01` |
 | `192.168.1.30` | `dc01` |
 | `192.168.1.151` | `apache-guacamole` |
 | `192.168.1.206` | `wazuh01` |
 | `192.168.1.211` | `kali01` |
 | `192.168.1.238` | `target01` |
+| `192.168.1.247` | `vulnscan01` |
 | `192.168.1.254` | AT&T gateway |
 
 ## DHCP / Observed Addresses
@@ -351,12 +374,14 @@ Physical / infrastructure
 ├── storage01
 ├── pve01
 ├── pve02
-└── pve03
+├── pve03
+└── pve04
 
 Proxmox cluster: homelab
 ├── pve01
 ├── pve02
-└── pve03
+├── pve03
+└── pve04
 
 Security / identity
 ├── wazuh01
@@ -365,10 +390,12 @@ Security / identity
 
 Attack / detection
 ├── kali01
-└── target01
+├── target01
+└── vulnscan01
 
 Additional services
 ├── apache-guacamole
+├── pialert
 └── sqlserver2025
 ```
 

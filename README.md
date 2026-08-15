@@ -12,7 +12,7 @@ This is not intended to represent a production enterprise network. It is a pract
 
 The lab currently includes:
 
-- A three-node Proxmox VE cluster
+- A four-node Proxmox VE cluster
 - Independent Linux management host
 - Physical Pi-hole DNS server
 - Shared Windows-based storage and backup server
@@ -41,12 +41,14 @@ The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions 
 | `pve01` | Proxmox cluster node | `192.168.1.10` |
 | `pve02` | Proxmox cluster node | `192.168.1.11` |
 | `pve03` | Proxmox cluster node | `192.168.1.12` |
+| `pve04` | Dell Precision 5550 Proxmox cluster node | `192.168.1.13` |
 | `mgmt01` | Independent Linux management host | `192.168.1.5` |
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
 | `storage01` | Windows storage/media/backup server | local network |
 | `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
 | `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
 | `kali01` | Security-testing system | `192.168.1.211` |
+| `vulnscan01` | Vulnerability-scanning system | `192.168.1.247` |
 | `dc01` | Windows Server 2022 AD DS / DNS domain controller | `192.168.1.30` |
 | `win11-01` | Windows 11 Pro domain-joined monitored endpoint | DHCP (`192.168.1.167` during validation) |
 
@@ -62,9 +64,10 @@ and currently consists of:
 pve01
 pve02
 pve03
+pve04
 ```
 
-with three-node quorum verified.
+with four-node quorum verified. The cluster requires three votes for quorum.
 
 ---
 
@@ -180,14 +183,15 @@ Topics include:
 
 ---
 
-#### [03 - Proxmox Three-Node Cluster Build and Validation](docs/03-proxmox-cluster-build.md)
+#### [03 - Proxmox Cluster Build and Validation](docs/03-proxmox-cluster-build.md)
 
-Documents the completed three-node Proxmox cluster:
+Documents the initial three-node build and the current four-node Proxmox cluster:
 
 ```text
 pve01  192.168.1.10
 pve02  192.168.1.11
 pve03  192.168.1.12
+pve04  192.168.1.13
 ```
 
 Topics include:
@@ -201,6 +205,13 @@ Topics include:
 - Cluster resource validation
 - Capacity review
 - Decision not to deploy Ceph
+
+---
+
+#### [16 - Proxmox Node Expansion and Workload Rebalancing](docs/16-proxmox-node-expansion.md)
+
+Documents the addition of `pve04`, repository and version standardization,
+four-node quorum validation, workload rebalancing, and startup-policy review.
 
 ---
 
@@ -542,8 +553,11 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Move Pi-hole to physical Raspberry Pi
 - [x] Establish `mgmt01`
 - [x] Move storage/media role to `storage01`
-- [x] Build three-node Proxmox cluster
-- [x] Verify cluster quorum
+- [x] Build initial three-node Proxmox cluster
+- [x] Add `pve04` as the fourth cluster node
+- [x] Standardize all nodes on Proxmox VE 9.2.10 and kernel 7.0.14-12-pve
+- [x] Verify four-node cluster quorum
+- [x] Rebalance `wazuh01` and `vulnscan01` across the expanded cluster
 - [x] Verify shared backup storage
 - [x] Deploy Wazuh SIEM
 - [x] Enroll first Linux Wazuh agent
@@ -588,7 +602,7 @@ The documentation numbering is intentionally organized around major project phas
 | `01-proxmox-backup.md` | Backup and recovery preparation | Complete |
 | `02-asset-inventory.md` | Current physical, virtual, service, and monitoring inventory | Active reference |
 | `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
-| `03-proxmox-cluster-build.md` | Three-node Proxmox cluster | Complete |
+| `03-proxmox-cluster-build.md` | Proxmox cluster build and current four-node validation | Complete |
 | `04-network-vlans.md` | Managed switching and VLAN design | Planned |
 | `05-opnsense.md` | OPNsense routing/firewalling | Planned |
 | `06-wazuh-siem.md` | Wazuh deployment | Complete |
@@ -596,6 +610,12 @@ The documentation numbering is intentionally organized around major project phas
 | `08-windows-telemetry.md` | Windows endpoint telemetry | Complete |
 | `09-attack-detection-labs.md` | SOC detection exercises | Active / documented |
 | `10-active-directory-lab.md` | Active Directory and identity monitoring | Complete |
+| `11-soc-noc-skills-matrix.md` | SOC/NOC skills matrix | Active reference |
+| `12-soc-alert-triage-playbook.md` | SOC alert triage and investigation | Active reference |
+| `13-noc-troubleshooting-runbook.md` | NOC troubleshooting runbook | Active reference |
+| `14-soc-noc-ticket-examples.md` | Incident and change ticket examples | Active reference |
+| `15-homelab-operations-checklist.md` | Homelab operations and health checklist | Active reference |
+| `16-proxmox-node-expansion.md` | Fourth-node expansion and workload rebalancing | Complete |
 
 ---
 
