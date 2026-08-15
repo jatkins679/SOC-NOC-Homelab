@@ -42,9 +42,10 @@ system is not presented as though it is already deployed.
 | AT&T gateway | AT&T residential fiber gateway | `192.168.1.254` | Default gateway / Internet edge | Supporting infrastructure |
 | `dns01` | Raspberry Pi 3 Model B+ | `192.168.1.20` | Pi-hole DNS / ad blocking | **Operational** |
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent administration host | **Operational** |
-| `storage01` | Dell PowerEdge T20 + attached storage | Verify current address | SMB/file storage and Proxmox backup support | Supporting infrastructure |
-| `sw-home01` | Existing home switch | Not applicable / management not documented | Existing home-network switching | Supporting infrastructure |
-| `sw01` | Cisco SG350-10 managed switch | Planned | Managed lab switching, VLANs, SNMP, CLI, SPAN | **Planned** |
+| `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
+| `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
+| `sw01` | Cisco SG350-10 managed switch | Not assigned; awaiting delivery | Managed lab switching, VLANs, SNMP, CLI, SPAN | **Purchased / awaiting delivery** |
+| `cellular-wan01` | GL.iNet GL-A1300 travel router + compatible USB LTE modem/SIM | Planned | Backup Internet connectivity and WAN-failover testing | **Planned** |
 | `fw01` | OPNsense virtual firewall | Planned | Lab routing, firewalling, inter-VLAN policy | **Planned** |
 | `zabbix01` | Linux VM | Planned | NOC monitoring / availability / SNMP | **Planned** |
 
@@ -120,7 +121,7 @@ automatic workload failover.
 | Asset | Platform | Address | Role | Monitoring / Integration | Status |
 |---|---|---:|---|---|---|
 | `wazuh01` | Linux | `192.168.1.206` | Wazuh SIEM / manager / dashboard | Central security monitoring | **Operational** |
-| `dc01` | Windows Server 2022 | `192.168.1.30` | Active Directory Domain Services / DNS | Windows Security events monitored through Wazuh | **Operational** |
+| `dc01` | Windows Server 2025 | `192.168.1.30` | Active Directory Domain Services / DNS | Windows Security events monitored through Wazuh | **Operational** |
 | `win11-01` | Windows 11 Pro | DHCP; `192.168.1.167` observed during validation | Domain-joined Windows endpoint | Wazuh agent, Sysmon, PowerShell telemetry | **Operational / DHCP** |
 
 Active Directory domain:
@@ -189,7 +190,7 @@ Detection / investigation / evidence
 |---|---|---:|---|---|
 | `apache-guacamole` | Proxmox LXC | `192.168.1.151` | Browser-based remote access gateway | **Operational** |
 | `sqlserver2025` | Ubuntu LXC / Microsoft SQL Server | DHCP; `192.168.1.165` observed | SQL Server learning / application service | **Operational / DHCP** |
-| `pialert` | Proxmox LXC | Verify current address | Network-presence and device-awareness service | **Operational** |
+| `pialert` | Proxmox LXC | DHCP; `192.168.1.225` observed | Network-presence and device-awareness service | **Operational / DHCP** |
 
 The Guacamole service is used for browser-based remote access to lab systems.
 
@@ -242,7 +243,8 @@ listed as operational until they have been configured and validated.
 
 | Asset | Planned Role | State |
 |---|---|---|
-| `sw01` | Cisco managed lab switch | Planned / pending deployment |
+| `sw01` | Cisco managed lab switch | Purchased / awaiting delivery |
+| `cellular-wan01` | Backup Internet via GL.iNet GL-A1300, compatible USB LTE modem, and SIM | Planned / compatibility and failover testing required |
 | `fw01` | OPNsense firewall/router | Planned |
 | `zabbix01` | Zabbix NOC monitoring server | Planned |
 | VLAN 10 | Management | Planned |
@@ -271,7 +273,6 @@ Examples included:
 - OpenVAS test systems
 - Pi-hole in an LXC container
 - WatchYourLAN
-- PiAlert
 - FreePBX
 - Other temporary or experimental guests
 
@@ -289,7 +290,7 @@ architecture.
 | Asset | Wazuh | Sysmon | Windows Security Logs | Linux Audit / Logs | NOC Monitoring |
 |---|---|---|---|---|---|
 | `wazuh01` | SIEM server | N/A | N/A | Local/service logs | Zabbix planned |
-| `dc01` | Yes / Windows telemetry | Not documented as primary source | **Yes** | N/A | Planned |
+| `dc01` | **Yes**; agent running automatically | Not installed | **Yes** | N/A | Planned |
 | `win11-01` | **Yes** | **Yes** | **Yes** | N/A | Planned |
 | `target01` | **Yes** | N/A | N/A | **Yes** | Planned |
 | `kali01` | Testing role | N/A | N/A | Local logs | Planned |
@@ -298,7 +299,7 @@ architecture.
 | `pve03` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `pve04` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `dns01` | Additional monitoring possible | N/A | N/A | Pi-hole/Linux logs | Planned |
-| `storage01` | Additional monitoring possible | N/A | Depends on host OS | Host/service logs | Planned |
+| `storage01` | Not currently enrolled | Not verified | Available locally; not currently forwarded | Windows/service logs | Planned |
 
 This table is intentionally conservative: a system is only marked as monitored
 where that monitoring has already been exercised or documented.
@@ -320,6 +321,7 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.30` | `dc01` |
 | `192.168.1.151` | `apache-guacamole` |
 | `192.168.1.206` | `wazuh01` |
+| `192.168.1.208` | `storage01` |
 | `192.168.1.211` | `kali01` |
 | `192.168.1.238` | `target01` |
 | `192.168.1.247` | `vulnscan01` |
@@ -331,6 +333,7 @@ where that monitoring has already been exercised or documented.
 |---:|---|---|
 | `192.168.1.165` | `sqlserver2025` | DHCP address observed during validation |
 | `192.168.1.167` | `win11-01` | DHCP address observed during Windows/Wazuh validation |
+| `192.168.1.225` | `pialert` | DHCP address observed during inventory validation |
 
 DHCP-observed addresses should not be treated as permanent reservations unless
 they are later explicitly reserved or converted to static assignments.

@@ -506,9 +506,9 @@ Useful diagnostic areas include:
 - [x] Complete network DNS cutover
 - [x] Move Pi-hole service to `192.168.1.20`
 - [x] Remove DNS dependency on Proxmox
-- [ ] Validate DNS from multiple client systems
-- [ ] Verify operation during Proxmox maintenance
-- [ ] Retire previous Pi-hole LXC
+- [x] Validate DNS from multiple client systems
+- [x] Verify operation during Proxmox maintenance
+- [x] Retire previous Pi-hole LXC
 - [x] Document final migration result
 
 ## Result

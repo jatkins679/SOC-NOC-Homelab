@@ -12,9 +12,9 @@ flowchart TB
     SW --> PVE2["pve02\n192.168.1.11"]
     SW --> PVE3["pve03\n192.168.1.12"]
     SW --> PVE4["pve04 - Precision 5550\n192.168.1.13"]
-    SW --> INFRA["mgmt01 / dns01 / storage01"]
+    SW --> INFRA["mgmt01 .5 / dns01 .20 / storage01 .208"]
 
-    PVE1 --> PVE1WORK["dc01, win11-01, docker\nsqlserver2025, Guacamole, PiAlert"]
+    PVE1 --> PVE1WORK["dc01, win11-01, docker\nsqlserver2025, Guacamole, PiAlert .225"]
     PVE2 --> PVE2WORK["kali01 / target01"]
     PVE3 --> WAZUH["wazuh01 - VM 500\n192.168.1.206"]
     PVE4 --> VULN["vulnscan01 - VM 320\n192.168.1.247"]
@@ -56,7 +56,12 @@ validated.
 
 ## Planned Network Phase
 
-The current unmanaged switch will later be supplemented or replaced in the lab
-design by a managed Cisco switch. VLAN segmentation, a second `pve04` Ethernet
-adapter, and OPNsense routing will be documented only after those components are
-implemented and validated.
+The current switch is a 16-port unmanaged TRENDnet TEG-S160G. A Cisco SG350-10
+has been purchased and is awaiting delivery for the managed-switch phase. VLAN
+segmentation, a second `pve04` Ethernet adapter, and OPNsense routing will be
+documented only after those components are implemented and validated.
+
+A separate future resilience test will use the existing GL.iNet GL-A1300 travel
+router with a compatible USB LTE modem and SIM as a backup Internet connection.
+Modem compatibility, cellular service, failover, recovery to the primary WAN, and
+monitoring behavior must be tested before this is presented as operational.

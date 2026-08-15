@@ -21,7 +21,7 @@ The lab currently includes:
 - Wazuh all-in-one SIEM server
 - Wazuh Linux endpoint monitoring
 - Windows 11 endpoint monitoring with Sysmon and PowerShell Script Block Logging
-- Windows Server 2022 Active Directory Domain Services and AD-integrated DNS
+- Windows Server 2025 Active Directory Domain Services and AD-integrated DNS
 - Domain-joined Windows 11 workstation in `corp.home.arpa`
 - Wazuh monitoring of Active Directory account-management events
 - File Integrity Monitoring
@@ -30,7 +30,7 @@ The lab currently includes:
 - Controlled SOC detection exercises
 - Shared Proxmox backup storage
 
-The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions of the design are still planned work.
+The Cisco-managed switching, VLAN, OPNsense, cellular backup Internet, and additional monitoring portions of the design are still planned work. The Cisco SG350-10 has been purchased and is awaiting delivery.
 
 ---
 
@@ -44,12 +44,13 @@ The Cisco-managed switching, VLAN, OPNsense, and additional monitoring portions 
 | `pve04` | Dell Precision 5550 Proxmox cluster node | `192.168.1.13` |
 | `mgmt01` | Independent Linux management host | `192.168.1.5` |
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
-| `storage01` | Windows storage/media/backup server | local network |
+| `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
 | `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
 | `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
 | `kali01` | Security-testing system | `192.168.1.211` |
 | `vulnscan01` | Vulnerability-scanning system | `192.168.1.247` |
-| `dc01` | Windows Server 2022 AD DS / DNS domain controller | `192.168.1.30` |
+| `pialert` | Network-presence monitoring service | DHCP (`192.168.1.225` observed) |
+| `dc01` | Windows Server 2025 AD DS / DNS domain controller | `192.168.1.30` |
 | `win11-01` | Windows 11 Pro domain-joined monitored endpoint | DHCP (`192.168.1.167` during validation) |
 
 The Proxmox cluster is named:
@@ -570,7 +571,7 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Integrate Linux Auditd
 - [x] Validate privileged-command monitoring
 - [x] Validate local account creation/deletion monitoring
-- [x] Deploy Windows Server 2022 Active Directory Domain Services
+- [x] Deploy Windows Server 2025 Active Directory Domain Services
 - [x] Create the `corp.home.arpa` Active Directory domain
 - [x] Join `win11-01` to the domain and verify the secure channel
 - [x] Validate Active Directory account-creation detection in Wazuh
@@ -581,6 +582,7 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [ ] Install Cisco managed switch
 - [ ] Design and implement VLANs
 - [ ] Deploy OPNsense
+- [ ] Validate cellular backup Internet using the GL.iNet GL-A1300 travel router, a compatible USB LTE modem, and a SIM
 - [ ] Add additional Linux agents
 - [ ] Monitor SSH `authorized_keys`
 - [ ] Create custom Wazuh rules
