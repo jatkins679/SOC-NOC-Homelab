@@ -647,7 +647,7 @@ Passwords, tokens, generated credentials, and other sensitive values are exclude
 
 Most of this equipment started as a collection of old laptops, Raspberry Pis, mini PCs, Windows systems, switches, and other hardware in my garage behind an AT&T fiber connection.
 
-Rather than replace everything with new enterprise hardware, I wanted to see how far I could take the equipment I already had.
+Rather than replace everything with enterprise hardware, I wanted to see how far I could take the equipment I already had.
 
 The project gives me a place to:
 
