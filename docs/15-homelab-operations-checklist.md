@@ -30,13 +30,14 @@ only after deployment and validation.
 | `pve01` | Proxmox VE cluster node | `192.168.1.10` |
 | `pve02` | Proxmox VE cluster node | `192.168.1.11` |
 | `pve03` | Proxmox VE cluster node | `192.168.1.12` |
+| `pve04` | Proxmox VE cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
 | `wazuh01` | Wazuh SIEM | `192.168.1.206` |
 | `kali01` | Security-testing system | `192.168.1.211` |
 | `target01` | Ubuntu monitored target | `192.168.1.238` |
-| `storage01` | File / backup storage | Verify current address |
+| `storage01` | File / backup storage | `192.168.1.208` |
 | `t-20-backup` | Proxmox shared backup storage | CIFS target |
 
 ---
@@ -56,10 +57,10 @@ pvecm status
 Healthy state should include:
 
 ```text
-Nodes:          3
-Expected votes: 3
-Total votes:    3
-Quorum:         2
+Nodes:          4
+Expected votes: 4
+Total votes:    4
+Quorum:         3
 Quorate:        Yes
 ```
 
@@ -75,6 +76,7 @@ Expected:
 pve01   online
 pve02   online
 pve03   online
+pve04   online
 ```
 
 ### If Not Healthy
@@ -774,6 +776,7 @@ PROXMOX
 [ ] pve01 online
 [ ] pve02 online
 [ ] pve03 online
+[ ] pve04 online
 [ ] Storage active
 
 DNS

@@ -24,9 +24,9 @@ The goal is evidence-backed skills, not a list of product names.
 
 | Skill / Competency | Status | Hands-on Implementation | Validation / Evidence | Repository Documentation |
 |---|---|---|---|---|
-| Proxmox VE administration | **Demonstrated** | Built and administer a three-node Proxmox VE cluster; manage VMs, LXC containers, storage, networking, and resources | Three nodes online; cluster membership and resources validated | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Multi-node virtualization | **Demonstrated** | `pve01`, `pve02`, and `pve03` operate as cluster `homelab` | `pvecm status`, `pvecm nodes`, `pvesh get /nodes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Cluster quorum | **Demonstrated** | Three voting Proxmox nodes using Corosync/knet | 3 votes, quorum 2, `Quorate: Yes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
+| Proxmox VE administration | **Demonstrated** | Built and administer a four-node Proxmox VE cluster; manage VMs, LXC containers, storage, networking, and resources | Four nodes online; cluster membership, workloads, and resources validated | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
+| Multi-node virtualization | **Demonstrated** | `pve01`, `pve02`, `pve03`, and `pve04` operate as cluster `homelab` | `pvecm status`, `pvecm nodes`, `pvesh get /nodes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
+| Cluster quorum | **Demonstrated** | Four voting Proxmox nodes using Corosync/knet | 4 votes, quorum 3, `Quorate: Yes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
 | VM / LXC administration | **Demonstrated** | Inventory, backup, restore, start, inspect, and manage QEMU VMs and LXC containers | `qm`, `pct`, QEMU guest-agent and restore workflows | [`01-proxmox-backup.md`](01-proxmox-backup.md), [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
 | Backup and disaster recovery | **Demonstrated** | Created Proxmox guest backups and host-configuration backup; inspected and restored workloads | Backup existence, configuration extraction, LXC restoration and post-restore checks | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
 | Shared storage / CIFS | **Demonstrated** | Integrated `t-20-backup` as remote Proxmox backup storage | `pvesm status`, `pvesm list`, backup access and restore workflow | [`01-proxmox-backup.md`](01-proxmox-backup.md), [`02-asset-inventory.md`](02-asset-inventory.md) |
@@ -228,15 +228,16 @@ See:
 
 ## "What virtualization experience do you have?"
 
-I administer a three-node Proxmox VE cluster using KVM/QEMU and LXC. I have
-worked with cluster membership, quorum, local and shared storage, guest
-inventory, backup/restoration, resource checks, Linux networking and
-centralized cluster management.
+I administer a four-node Proxmox VE cluster using KVM/QEMU and LXC. I have
+worked with cluster membership, quorum, rolling node updates, workload
+migration, local and shared storage, guest inventory, backup/restoration,
+resource checks, Linux networking and centralized cluster management.
 
 See:
 
 - [`01-proxmox-backup.md`](01-proxmox-backup.md)
 - [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md)
+- [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md)
 
 ## "How do you validate a security alert?"
 
@@ -305,7 +306,7 @@ the implementation and validation evidence exists.
 | Backup / disaster recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
 | Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | DNS / Pi-hole | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
+| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
 | Wazuh SIEM | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
 | Detection exercises | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |

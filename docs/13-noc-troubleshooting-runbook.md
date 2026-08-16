@@ -111,6 +111,7 @@ Examples:
 | `pve01` | Proxmox cluster node | `192.168.1.10` |
 | `pve02` | Proxmox cluster node | `192.168.1.11` |
 | `pve03` | Proxmox cluster node | `192.168.1.12` |
+| `pve04` | Proxmox cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
@@ -425,6 +426,7 @@ Expected cluster node addresses are:
 pve01  192.168.1.10
 pve02  192.168.1.11
 pve03  192.168.1.12
+pve04  192.168.1.13
 ```
 
 ## Check Cluster State
@@ -441,7 +443,7 @@ pvecm nodes
 
 Questions:
 
-- Are all three nodes listed?
+- Are all four nodes listed?
 - Is the cluster quorate?
 - How many votes are expected?
 - How many votes are present?
@@ -449,10 +451,10 @@ Questions:
 Normal lab state is:
 
 ```text
-Nodes:          3
-Expected votes: 3
-Total votes:    3
-Quorum:         2
+Nodes:          4
+Expected votes: 4
+Total votes:    4
+Quorum:         3
 Quorate:        Yes
 ```
 
@@ -468,6 +470,7 @@ Expected healthy result includes:
 pve01   online
 pve02   online
 pve03   online
+pve04   online
 ```
 
 ---
@@ -478,18 +481,18 @@ pve03   online
 
 One or more nodes are unavailable or cluster operations are restricted.
 
-A three-node cluster requires a majority.
+A four-node cluster requires a majority.
 
 With this lab:
 
 ```text
-3 voting nodes
-quorum = 2
+4 voting nodes
+quorum = 3
 ```
 
-Losing one node can leave two votes and preserve quorum.
+Losing one node can leave three votes and preserve quorum.
 
-Losing two voting nodes leaves only one vote and the cluster no longer has a
+Losing two voting nodes leaves two votes and the cluster no longer has a
 majority.
 
 ## Investigation
