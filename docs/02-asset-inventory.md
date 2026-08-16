@@ -212,6 +212,71 @@ application, and security-administration practice.
 
 The Proxmox cluster has verified access to the shared `t-20-backup` target.
 
+## Verified `storage01` Platform
+
+| Component | Verified state |
+|---|---|
+| System | Dell PowerEdge T20 |
+| Processor | Intel Xeon E3-1225 v3 at 3.20 GHz |
+| Memory | 32 GB |
+| BIOS | A20, dated 2019-08-19 |
+| TPM | Not present |
+| Secure Boot | UEFI-capable but disabled during inspection |
+
+## Verified Attached Storage
+
+| Windows volume | Device / layout | Filesystem | Verified role / state |
+|---|---|---|---|
+| `C:` | 1 TB-class WDC SATA disk; 0.91 TiB visible | NTFS | Current system disk |
+| `E:` | 5 TB-class Seagate Expansion; 2.27 TiB Windows partition | NTFS | `MOVIES`; approximately 0.56 TiB free during inspection |
+| Hidden partition on same Seagate disk | 2.27 TiB Apple HFS/HFS+ partition | HFS+ | Preserved; do not initialize, format, or assign a Windows drive letter |
+| `F:` | 1.5 TB-class WD Elements; 1.36 TiB visible | NTFS | Secondary external storage; largely free during inspection |
+| `G:` | Drobo Gen3 logical volume | NTFS | `T20-NAS`; Proxmox backup target and bulk storage |
+
+The Drobo contains two 6 TB disks with single-disk protection. Drobo Dashboard
+reported:
+
+```text
+Installed raw capacity:       12 TB (10.91 TiB actual)
+Protected usable capacity:   5.34 TB
+Logical NTFS volume:         64 TB
+Used after backup rebuild:   232.77 GB
+Health:                      Good
+Firmware:                    4.2.3
+Interface:                   USB
+```
+
+The 64 TB value is the Drobo's thin-provisioned maximum logical volume, not the
+installed raw or usable physical capacity. Physical utilization must therefore
+be checked in Drobo Dashboard rather than inferred from Windows or Proxmox.
+
+## Current Backup Policy
+
+The SMB share `ProxmoxBackups` maps to a restricted directory on `G:` and is
+configured in Proxmox as `t-20-backup`. Current retention is:
+
+```text
+keep-last=7
+keep-weekly=4
+keep-monthly=3
+```
+
+Backup jobs are staggered to avoid four simultaneous write streams to the
+USB-attached Drobo:
+
+| Node | Daily schedule |
+|---|---:|
+| `pve01` | `02:00` |
+| `pve02` | `04:00` |
+| `pve03` | `05:00` |
+| `pve04` | `06:00` |
+
+The complete current backup set contains one archive for each VM/LXC ID:
+
+```text
+100 101 105 200 201 210 300 320 400 500
+```
+
 The storage design intentionally favors:
 
 ```text

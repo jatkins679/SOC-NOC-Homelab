@@ -216,6 +216,15 @@ four-node quorum validation, workload rebalancing, and startup-policy review.
 
 ---
 
+#### [17 - Storage and Backup Resilience](docs/17-storage-backup-resilience.md)
+
+Documents the verified `storage01` hardware and attached-storage layout, recovery
+of the Proxmox CIFS target after its backing directory was removed, validation
+of a complete ten-guest backup set, staggered per-node scheduling, finite
+retention, Drobo capacity monitoring, and Proxmox LVM-thin remediation.
+
+---
+
 #### [06 - Wazuh SIEM Deployment](docs/06-wazuh-siem.md)
 
 Documents deployment of the Wazuh SIEM server as a dedicated Proxmox virtual machine.
@@ -467,6 +476,16 @@ t-20-backup
 
 `t-20-backup` is CIFS-backed shared storage hosted by the Dell PowerEdge T20 and is used for Proxmox backups.
 
+The target is a Windows SMB share backed by a USB-attached Drobo. The Drobo
+presents a 64 TB thin-provisioned NTFS volume, but its current physical layout
+is two 6 TB drives with 5.34 TB of protected usable capacity. Drobo Dashboard,
+not the 64 TB logical value reported through CIFS, is the authoritative source
+for physical capacity.
+
+Backups use finite retention (`keep-last=7`, `keep-weekly=4`,
+`keep-monthly=3`) and run as staggered per-node jobs rather than four concurrent
+writes to the USB-backed target.
+
 Ceph is intentionally not used. The current mini-PC hardware and lab scale do not justify the additional resource and storage overhead.
 
 ---
@@ -560,6 +579,9 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Verify four-node cluster quorum
 - [x] Rebalance `wazuh01` and `vulnscan01` across the expanded cluster
 - [x] Verify shared backup storage
+- [x] Recover and validate the `t-20-backup` CIFS target
+- [x] Rebuild and verify current backups for all ten guests
+- [x] Configure finite backup retention and stagger jobs by node
 - [x] Deploy Wazuh SIEM
 - [x] Enroll first Linux Wazuh agent
 - [x] Enroll Windows Wazuh agent
@@ -618,6 +640,7 @@ The documentation numbering is intentionally organized around major project phas
 | `14-soc-noc-ticket-examples.md` | Incident and change ticket examples | Active reference |
 | `15-homelab-operations-checklist.md` | Homelab operations and health checklist | Active reference |
 | `16-proxmox-node-expansion.md` | Fourth-node expansion and workload rebalancing | Complete |
+| `17-storage-backup-resilience.md` | Storage inventory, CIFS recovery, backup scheduling, and capacity safeguards | Complete |
 
 ---
 

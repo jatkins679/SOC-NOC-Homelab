@@ -249,6 +249,9 @@ Look for:
 - unexpectedly high utilization;
 - backup storage unavailable.
 
+For `t-20-backup`, Proxmox reports the Drobo's 64 TB logical volume rather than
+its physical capacity. Check Drobo Dashboard for real usable space and health.
+
 ---
 
 # 3. Weekly Operations Checklist
@@ -333,6 +336,57 @@ Questions:
 - Has available capacity changed unexpectedly?
 
 Do not assume a scheduled backup succeeded because the schedule exists.
+
+Current expected coverage is one recent archive for each guest ID:
+
+```text
+100 101 105 200 201 210 300 320 400 500
+```
+
+The daily jobs are intentionally staggered:
+
+| Node | Schedule |
+|---|---:|
+| `pve01` | `02:00` |
+| `pve02` | `04:00` |
+| `pve03` | `05:00` |
+| `pve04` | `06:00` |
+
+Storage-level retention should remain:
+
+```text
+keep-last=7,keep-weekly=4,keep-monthly=3
+```
+
+Verify the current job and storage configuration with:
+
+```bash
+pvesh get /cluster/backup --output-format yaml
+pvesh get /storage/t-20-backup --output-format yaml
+```
+
+## 3.3.1 Proxmox Thin-Pool Review
+
+On each Proxmox node, periodically inspect LVM-thin data and metadata usage:
+
+```bash
+lvs -a --units g \
+    -o vg_name,lv_name,lv_size,data_percent,metadata_percent,seg_monitor
+
+vgs --units g \
+    -o vg_name,vg_size,vg_free
+```
+
+On `pve01`, LVM monitoring is enabled and the current auto-extension guard is:
+
+```text
+thin_pool_autoextend_threshold=80
+thin_pool_autoextend_percent=4
+```
+
+The small percentage reflects the limited free space remaining in the volume
+group. It provides a guard, not unlimited growth. Continue monitoring actual
+thin-pool consumption and plan added capacity before the reserve is exhausted.
 
 ---
 
@@ -821,6 +875,8 @@ BACKUPS
 [ ] Recent backups visible
 [ ] Backup target accessible
 [ ] Spot-check backup metadata
+[ ] Confirm all expected guest IDs are represented
+[ ] Confirm Drobo health and physical capacity in Drobo Dashboard
 
 WAZUH
 [ ] Review recent alerts
@@ -879,6 +935,7 @@ CAPACITY
 [ ] Review disk trends
 [ ] Review memory trends
 [ ] Review backup growth
+[ ] Review LVM-thin data and metadata percentages
 
 NOTES / ACTION ITEMS:
 ```

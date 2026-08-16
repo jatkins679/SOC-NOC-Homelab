@@ -648,6 +648,63 @@ ls -lah /mnt/pve/
 Do not start deleting backups merely because a job failed. Establish the cause
 first.
 
+## Stale CIFS Mount After Share Recreation
+
+If a Windows SMB share is removed and later recreated under the same name, a
+Proxmox node may retain a stale kernel mount. Typical evidence includes:
+
+```text
+ls: cannot access '/mnt/pve/t-20-backup': Stale file handle
+CIFS: VFS: reconnect tcon failed
+```
+
+Confirm the mount state:
+
+```bash
+findmnt /mnt/pve/t-20-backup
+```
+
+After confirming that no backup task is using the target, detach the stale
+mount on the affected node:
+
+```bash
+umount /mnt/pve/t-20-backup
+```
+
+Then force Proxmox to access and reactivate the configured storage:
+
+```bash
+pvesm list t-20-backup
+pvesm status
+```
+
+Repeat the mount check on every cluster node because CIFS mounts are maintained
+per node even though the storage configuration is cluster-wide.
+
+## Compressed Backup Write Failure
+
+A destination-side interruption may appear at the end of a backup as:
+
+```text
+zstd: /*stdout*: Resource temporarily unavailable
+ERROR: Backup of VM <id> failed
+```
+
+Check the kernel log around the failure time:
+
+```bash
+journalctl -k --since '<start-time>' --until '<end-time>' --no-pager |
+    grep -Ei 'cifs|smb|error|disconnect|reconnect'
+```
+
+If later backups completed and the storage remains active, verify which guest
+archive is absent and retry only that guest. Do not rerun the entire cluster job
+without first confirming the failed scope.
+
+Concurrent jobs from multiple nodes can overload a Windows/USB-backed target.
+Prefer staggered per-node schedules when destination-side CIFS write errors
+appear under parallel load.
+
 ---
 
 # 13. Disk Space / Filesystem Incident
