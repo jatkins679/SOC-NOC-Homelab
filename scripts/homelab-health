@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+printf "\nHomelab Management Health Check\n"
+printf "%s\n\n" "$(date)"
+
+printf "%-12s %-15s %-14s %s\n" "DEVICE" "ADDRESS" "CHECK" "RESULT"
+printf "%-12s %-15s %-14s %s\n" "------------" "---------------" "--------------" "----------------"
+
+host_up() {
+    ping -c 1 -W 1 "$1" >/dev/null 2>&1
+}
+
+ping_check() {
+    name="$1"
+    ip="$2"
+
+    if host_up "$ip"; then
+        printf "%-12s %-15s %-14s %s\n" "$name" "$ip" "ICMP" "OK"
+    else
+        printf "%-12s %-15s %-14s %s\n" "$name" "$ip" "ICMP" "HOST DOWN"
+    fi
+}
+
+tcp_check() {
+    name="$1"
+    ip="$2"
+    port="$3"
+    label="$4"
+
+    if ! host_up "$ip"; then
+        printf "%-12s %-15s %-14s %s\n" "$name" "$ip" "$label" "HOST DOWN"
+        return
+    fi
+
+    if nc -z -w 2 "$ip" "$port" >/dev/null 2>&1; then
+        printf "%-12s %-15s %-14s %s\n" "$name" "$ip" "$label" "OK"
+    else
+        printf "%-12s %-15s %-14s %s\n" "$name" "$ip" "$label" "SERVICE DOWN"
+    fi
+}
+
+dns_check() {
+    ip="192.168.1.20"
+
+    if ! host_up "$ip"; then
+        printf "%-12s %-15s %-14s %s\n" "dns01" "$ip" "DNS/53" "HOST DOWN"
+        return
+    fi
+
+    if dig +time=2 +tries=1 @"$ip" example.com A +short 2>/dev/null | grep -q .; then
+        printf "%-12s %-15s %-14s %s\n" "dns01" "$ip" "DNS/53" "OK"
+    else
+        printf "%-12s %-15s %-14s %s\n" "dns01" "$ip" "DNS/53" "SERVICE DOWN"
+    fi
+}
+
+ping_check "Gateway"   "192.168.1.254"
+
+tcp_check  "pve01"     "192.168.1.10"  8006 "PVE/8006"
+tcp_check  "pve02"     "192.168.1.11"  8006 "PVE/8006"
+tcp_check  "pve03"     "192.168.1.12"  8006 "PVE/8006"
+tcp_check  "pve04"     "192.168.1.13"  8006 "PVE/8006"
+
+dns_check
+
+tcp_check  "sw01"      "192.168.1.21"  22   "SSH/22"
+ping_check "dc01"      "192.168.1.30"
+tcp_check  "docker"    "192.168.1.174" 3001 "Kuma/3001"
+tcp_check  "wazuh01"   "192.168.1.206" 443  "HTTPS/443"
+tcp_check  "storage01" "192.168.1.208" 445  "SMB/445"
+
+printf "\n"
