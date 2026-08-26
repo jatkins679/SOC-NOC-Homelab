@@ -1084,6 +1084,142 @@ Unauthorized account creation may indicate:
 - Preserve evidence and escalate to incident response.
 
 ---
+---
+
+# Ticket 16 — storage01 SMB Failure After Power Outage
+
+## Type
+
+Infrastructure / service availability incident
+
+## Priority
+
+P3 — Medium
+
+## Affected Service
+
+```text
+Proxmox CIFS backup storage: t-20-backup
+SMB server: storage01
+SMB share: ProxmoxBackups
+```
+
+## Affected System
+
+```text
+storage01
+192.168.1.208
+```
+
+## Summary
+
+Following a power outage, `storage01` rebooted and its attached Drobo storage
+returned normally, but Proxmox reported the `t-20-backup` CIFS storage as
+unavailable.
+
+Uptime Kuma independently reported TCP port 445 on `192.168.1.208` as down.
+
+## Initial Observations
+
+Local inspection on `storage01` showed:
+
+- the server retained IP address `192.168.1.208`;
+- the Drobo volume was mounted as `G:`;
+- `G:\ProxmoxBackups` was present;
+- the `ProxmoxBackups` SMB share still existed;
+- the Windows `LanmanServer` service was running;
+- Windows was listening locally on TCP port 445.
+
+These findings suggested that the storage device and SMB service were healthy
+locally and that the failure was more likely in network access or firewall
+policy.
+
+## Network Testing
+
+From `pve01`:
+
+```bash
+ping -c 3 192.168.1.208
+nc -nvz -w 3 192.168.1.208 445
+```
+
+The Proxmox host could not reach `storage01`, matching the Uptime Kuma SMB
+availability alert.
+
+## Windows Network Profile Check
+
+On `storage01`:
+
+```powershell
+Get-NetConnectionProfile
+```
+
+The active Ethernet interface was found in the following state:
+
+```text
+InterfaceAlias   : Ethernet
+NetworkCategory  : Public
+```
+
+The trusted home-LAN Ethernet connection should have been classified as
+`Private`.
+
+## Root Cause
+
+After the power outage and reboot, Windows classified the active Ethernet
+connection as a `Public` network.
+
+Windows Firewall policy for the Public profile blocked inbound SMB access from
+the LAN even though the SMB server service, share, TCP listener, and attached
+storage were functioning normally.
+
+## Corrective Action
+
+The Ethernet network profile was changed back to `Private`:
+
+```powershell
+Set-NetConnectionProfile -InterfaceIndex 20 -NetworkCategory Private
+```
+
+## Validation
+
+After correcting the network profile:
+
+- SMB connectivity to `storage01` was restored;
+- Uptime Kuma no longer reported TCP 445 as unavailable;
+- Proxmox again recognized `t-20-backup`;
+- the Drobo and `ProxmoxBackups` share remained intact;
+- no Proxmox storage definition needed to be deleted or recreated.
+
+## Operational Lesson
+
+A storage outage reported by Proxmox does not necessarily indicate a storage
+device or CIFS configuration failure.
+
+Troubleshooting should separate:
+
+```text
+physical storage
+    ↓
+Windows volume
+    ↓
+SMB share
+    ↓
+SMB service/listener
+    ↓
+Windows network/firewall policy
+    ↓
+network reachability
+    ↓
+Proxmox CIFS mount
+```
+
+Checking each dependency prevented unnecessary changes to the Proxmox storage
+configuration.
+
+## Final Status
+
+Resolved.
 
 # Ticket 16 — Cisco SG350-10 Baseline and Deployment Preparation
 

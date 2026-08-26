@@ -256,6 +256,65 @@ not a substitute for monitoring or future capacity expansion.
 
 # 8. Operational Lessons
 
+## Post-Power-Loss SMB Availability Incident
+
+A later power outage produced a second storage-related failure mode.
+
+After `storage01` rebooted:
+
+- the Drobo returned normally as `G:`;
+- `G:\ProxmoxBackups` remained intact;
+- the `ProxmoxBackups` SMB share still existed;
+- the Windows `LanmanServer` service was running;
+- TCP port 445 was listening locally;
+- Proxmox nevertheless reported `t-20-backup` as unavailable;
+- Uptime Kuma independently reported TCP 445 on `storage01` as down.
+
+The failure was therefore not caused by the Drobo, the SMB share, or the
+Proxmox storage definition.
+
+The active Windows Ethernet connection had been classified as:
+
+```text
+NetworkCategory : Public
+```
+
+Because Windows Firewall applies more restrictive policy to Public networks,
+remote SMB access from the LAN was blocked.
+
+The profile was corrected with:
+
+```powershell
+Set-NetConnectionProfile -InterfaceIndex 20 -NetworkCategory Private
+```
+
+SMB access and Proxmox backup-storage availability returned without recreating
+the CIFS storage definition.
+
+This incident reinforced the need to troubleshoot storage dependencies in
+layers:
+
+```text
+attached storage
+    ↓
+Windows filesystem
+    ↓
+SMB share
+    ↓
+SMB server/listener
+    ↓
+Windows firewall/network profile
+    ↓
+network path
+    ↓
+Proxmox CIFS storage
+```
+
+A Proxmox storage alarm should therefore not be treated immediately as a
+storage-device or CIFS-configuration failure. Host networking and Windows
+firewall/profile state must also be validated after an unexpected reboot or
+power interruption.
+
 - A configured backup job is not proof that recoverable archives still exist.
 - Task logs can establish the scope and recency of a lost backup set.
 - Recreating a deleted SMB share may leave stale CIFS mounts on every client.

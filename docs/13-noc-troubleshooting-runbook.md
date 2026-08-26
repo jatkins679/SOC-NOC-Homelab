@@ -636,18 +636,82 @@ Proxmox can list content through its storage configuration.
 ```bash
 ls -lah /mnt/pve/
 ```
+## Check Network Reachability to the SMB Server
+
+For the current backup target, `storage01` is expected at:
+
+```text
+192.168.1.208
+```
+
+From a Proxmox node:
+
+```bash
+ping -c 3 192.168.1.208
+nc -nvz -w 3 192.168.1.208 445
+```
+
+TCP port `445` is the SMB service. If the Windows server is healthy locally but
+the Proxmox node cannot reach port 445, investigate the Windows network profile
+and firewall before rebuilding the Proxmox storage definition.
+
+## Check SMB on storage01
+
+From an elevated PowerShell session:
+
+```powershell
+ipconfig
+Get-Service LanmanServer
+Get-SmbShare
+Get-NetTCPConnection -LocalPort 445 -State Listen
+Get-NetConnectionProfile
+```
+
+Verify:
+
+- the Ethernet interface still has the expected IP address;
+- the `LanmanServer` service is running;
+- the `ProxmoxBackups` share still exists;
+- Windows is listening on TCP 445;
+- the active Ethernet connection is classified as `Private`.
+
+After a power loss or reboot, Windows can classify the Ethernet connection as
+`Public`. Windows Firewall can then block SMB access from the LAN even though
+the SMB service, share, and attached storage are healthy.
+
+If the trusted home-LAN Ethernet connection is incorrectly classified as
+`Public`, identify its interface index with `Get-NetConnectionProfile` and
+correct it:
+
+```powershell
+Set-NetConnectionProfile -InterfaceIndex <index> -NetworkCategory Private
+```
+
+Retest from Proxmox:
+
+```bash
+ping -c 3 192.168.1.208
+nc -nvz -w 3 192.168.1.208 445
+pvesm status
+pvesm list t-20-backup
+```
+
+Do not delete and recreate the Proxmox storage definition until network
+reachability, SMB service state, Windows firewall/profile state, and the remote
+share have been checked.
 
 ## Questions
 
 - Does Proxmox report the storage as active?
 - Can the host reach the storage server?
+- Is TCP 445 reachable?
+- Is the Windows SMB server service running?
+- Does the expected SMB share still exist?
+- Is the Windows Ethernet network profile `Private`?
 - Is the CIFS mount present?
 - Are credentials still valid?
 - Is the remote filesystem full?
 - Can Proxmox list existing backups?
-
-Do not start deleting backups merely because a job failed. Establish the cause
-first.
 
 ## Stale CIFS Mount After Share Recreation
 
