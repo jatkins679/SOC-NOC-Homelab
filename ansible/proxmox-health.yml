@@ -1,5 +1,5 @@
 ---
-- name: Proxmox cluster health check
+- name: Proxmox node health check
   hosts: proxmox
   gather_facts: false
 
@@ -19,10 +19,18 @@
       register: uptime_result
       changed_when: false
 
-    - name: Check storage state
+    - name: Check storage status
       ansible.builtin.command: pvesm status
       register: storage_result
       changed_when: false
+
+    - name: Verify t-20-backup is active
+      ansible.builtin.assert:
+        that:
+          - "'t-20-backup' in storage_result.stdout"
+          - "storage_result.stdout is search('t-20-backup\\s+cifs\\s+active')"
+        fail_msg: "t-20-backup is missing or inactive on {{ inventory_hostname }}"
+        success_msg: "t-20-backup is active on {{ inventory_hostname }}"
 
     - name: Display node summary
       ansible.builtin.debug:
@@ -30,5 +38,42 @@
           - "Host: {{ hostname_result.stdout }}"
           - "Version: {{ pveversion_result.stdout }}"
           - "Uptime: {{ uptime_result.stdout }}"
-          - "Storage:"
-          - "{{ storage_result.stdout_lines }}"
+
+- name: Proxmox cluster quorum and consistency check
+  hosts: pve01
+  gather_facts: false
+
+  tasks:
+    - name: Read cluster status
+      ansible.builtin.command: pvecm status
+      register: cluster_result
+      changed_when: false
+
+    - name: Verify cluster is quorate
+      ansible.builtin.assert:
+        that:
+          - "'Quorate:          Yes' in cluster_result.stdout"
+        fail_msg: "Proxmox cluster is NOT quorate"
+        success_msg: "Proxmox cluster is quorate"
+
+    - name: Verify expected four-node membership
+      ansible.builtin.assert:
+        that:
+          - "cluster_result.stdout is search('(?m)^Nodes:\\s+4\\s*$')"
+          - "cluster_result.stdout is search('(?m)^Expected votes:\\s+4\\s*$')"
+          - "cluster_result.stdout is search('(?m)^Total votes:\\s+4\\s*$')"
+        fail_msg: "Expected four-node voting membership is not present"
+        success_msg: "All four expected voting nodes are present"
+
+    - name: Verify Proxmox versions are consistent
+      ansible.builtin.assert:
+        that:
+          - "hostvars['pve01'].pveversion_result.stdout == hostvars['pve02'].pveversion_result.stdout"
+          - "hostvars['pve01'].pveversion_result.stdout == hostvars['pve03'].pveversion_result.stdout"
+          - "hostvars['pve01'].pveversion_result.stdout == hostvars['pve04'].pveversion_result.stdout"
+        fail_msg: "Proxmox version or running kernel differs between nodes"
+        success_msg: "All Proxmox nodes report the same version and running kernel"
+
+    - name: Display cluster status
+      ansible.builtin.debug:
+        var: cluster_result.stdout_lines
