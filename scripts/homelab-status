@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -u
+
+REPO="$HOME/SOC-NOC-Homelab"
+
+if [ ! -d "$REPO" ]; then
+    echo "ERROR: Repository not found at $REPO"
+    exit 1
+fi
+
+echo
+echo "============================================================"
+echo " HOMELAB MANAGEMENT STATUS"
+echo " $(date)"
+echo "============================================================"
+echo
+
+echo "=== Network and Service Reachability ==="
+"$REPO/scripts/homelab-health"
+network_rc=$?
+
+echo
+echo "=== Proxmox Cluster Health ==="
+"$REPO/scripts/proxmox-health" --brief
+proxmox_rc=$?
+
+echo
+echo "============================================================"
+
+if [ "$network_rc" -eq 0 ] && [ "$proxmox_rc" -eq 0 ]; then
+    echo "OVERALL STATUS: HEALTHY"
+    rc=0
+else
+    echo "OVERALL STATUS: ATTENTION REQUIRED"
+    echo "Network/service check exit code: $network_rc"
+    echo "Proxmox check exit code:        $proxmox_rc"
+    rc=1
+fi
+
+echo "============================================================"
+echo
+
+exit "$rc"
