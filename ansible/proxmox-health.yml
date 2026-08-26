@@ -32,6 +32,35 @@
         fail_msg: "t-20-backup is missing or inactive on {{ inventory_hostname }}"
         success_msg: "t-20-backup is active on {{ inventory_hostname }}"
 
+    - name: Verify no Proxmox storage reports inactive or unknown
+      ansible.builtin.assert:
+        that:
+          - "storage_result.stdout is not search('(?m)^\\S+\\s+\\S+\\s+(inactive|unknown)\\b')"
+        fail_msg: "One or more storage resources are unhealthy on {{ inventory_hostname }}"
+        success_msg: "All reported storage is active on {{ inventory_hostname }}"
+
+    - name: Check critical Proxmox services
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      loop:
+        - pve-cluster
+        - corosync
+        - pvedaemon
+        - pveproxy
+        - pvestatd
+      register: proxmox_service_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Verify critical Proxmox services are active
+      ansible.builtin.assert:
+        that:
+          - "item.stdout == 'active'"
+        fail_msg: "{{ item.item }} is not active on {{ inventory_hostname }}"
+        success_msg: "{{ item.item }} is active on {{ inventory_hostname }}"
+      loop: "{{ proxmox_service_checks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     - name: Display node summary
       ansible.builtin.debug:
         msg:
