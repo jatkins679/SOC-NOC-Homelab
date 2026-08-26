@@ -178,7 +178,7 @@ vzdump 100 \
     --notes-template '{{guestname}}'
 ```
 
-The retry completed successfully. Final enumeration showed exactly one current
+The retry completed successfully. Final verification showed exactly one current
 archive for every expected guest:
 
 ```text
@@ -262,7 +262,7 @@ not a substitute for monitoring or future capacity expansion.
 - Cluster-wide parallel writes can expose limits in a Windows/USB-backed target.
 - Thin-provisioned logical capacity must not be confused with physical capacity.
 - Retention must be finite and aligned with the destination's real capacity.
-- Backup verification should enumerate every expected VM/LXC ID.
+- Backup verification should account for every expected VM/LXC ID.
 - Hypervisor-capacity warnings can reveal separate guest-filesystem risks.
 
 ---

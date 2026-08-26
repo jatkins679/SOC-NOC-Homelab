@@ -30,7 +30,7 @@ The lab currently includes:
 - Controlled SOC detection exercises
 - Shared Proxmox backup storage
 
-The Cisco-managed switching, VLAN, OPNsense, cellular backup Internet, and additional monitoring portions of the design are still planned work. The Cisco SG350-10 has been purchased and is awaiting delivery.
+Managed switching has entered the staging phase. The Cisco SG350-10 has been received, configured as `sw01`, assigned the fixed management address `192.168.1.21/24`, checked at the CLI, and backed up before deployment. The current flat lab network still operates on `192.168.1.0/24`; VLAN segmentation, OPNsense, cellular backup Internet, and additional monitoring remain planned work.
 
 ---
 
@@ -139,8 +139,42 @@ Defines daily, weekly, monthly, and periodic operational checks for Proxmox,
 Wazuh, Pi-hole DNS, backups, storage, Windows endpoints, Active Directory,
 capacity, telemetry health, maintenance readiness, and recovery testing.
 
-Planned Cisco, Zabbix, OPNsense, and Suricata checks remain explicitly separated
-until those systems are deployed and validated.
+The Cisco baseline is now documented separately from its future VLAN, SNMP,
+syslog, and SPAN work so the repository distinguishes staging from production
+operation.
+
+---
+
+#### [04 - Managed Switching and VLAN Design](docs/04-network-vlans.md)
+
+Documents the Cisco SG350-10 (`sw01`) bench configuration, firmware validation,
+configuration backup, current default-VLAN state, initial port convention, and
+planned VLAN design. The document explicitly distinguishes completed switch
+staging from VLANs and routing that have not yet been implemented.
+
+---
+
+#### [18 - Physical Infrastructure and Lab Layout](docs/18-physical-infrastructure.md)
+
+Documents the physical shelf constraints, equipment zones, power separation,
+ventilation, mounting, serviceability, and before/after evidence standards used
+for the homelab rebuild.
+
+---
+
+#### [19 - Homelab Shutdown and Startup Runbook](docs/19-shutdown-startup-runbook.md)
+
+Defines the controlled full-lab shutdown, physical-change window, startup order,
+validation checks, and rollback path used when the lab is intentionally powered
+down for infrastructure work.
+
+---
+
+#### [20 - Ethernet Cabling and Labeling Standard](docs/20-cabling-standard.md)
+
+Defines the `C##` cable-ID convention, dual-end labeling, endpoint naming,
+prepared cable map, switch-port recording, and cable-management practices for
+the physical lab.
 
 ---
 
@@ -453,10 +487,13 @@ Current systems include:
 - Dell PowerEdge T20 used for storage, media, and backup
 - Raspberry Pi used for DNS
 - Additional Raspberry Pi hardware
-- Existing unmanaged Ethernet switching
+- TRENDnet TEG-S160G unmanaged switch (`sw-home01`) for the existing home network
+- Cisco SG350-10 managed switch (`sw01`), received and staged for the homelab
 - GL.iNet hardware for network experimentation / backup connectivity
 
-A Cisco managed switch is planned for the next networking phase.
+`sw01` is not presented as the household switch replacement. The current home
+network continues to use `sw-home01`; the Cisco switch is being introduced as
+the managed homelab switching platform.
 
 ---
 
@@ -544,9 +581,11 @@ It currently provides telemetry from:
 
 ---
 
-## Planned Network Design
+## Managed Switching and Planned Network Design
 
-The next major network phase will introduce managed switching and segmentation.
+The managed-switch staging phase is underway. `sw01` has been received, given a
+unique management address, validated at the CLI, and backed up. The next major
+network phase is the physical homelab connection and then segmentation.
 
 The planned design includes separate logical areas for:
 
@@ -557,7 +596,11 @@ The planned design includes separate logical areas for:
 - Attack/testing systems
 - Guest access
 
-The exact VLAN implementation will be documented after the managed Cisco switch is installed.
+The current Cisco baseline is documented in
+[`04-network-vlans.md`](docs/04-network-vlans.md). The switch currently retains
+the default flat VLAN state; the exact 802.1Q trunking, access-port assignments,
+OPNsense routing, and inter-VLAN policy will be documented only after they are
+implemented and validated.
 
 I am intentionally not documenting planned VLANs as though they already exist.
 
@@ -597,11 +640,16 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Create the `corp.home.arpa` Active Directory domain
 - [x] Join `win11-01` to the domain and verify the secure channel
 - [x] Validate Active Directory account-creation detection in Wazuh
+- [x] Receive and identify the Cisco SG350-10
+- [x] Configure `sw01` with fixed management address `192.168.1.21/24`
+- [x] Validate Cisco firmware and baseline VLAN state from the CLI
+- [x] Download a baseline Cisco startup-configuration backup
 
 ### In Progress / Planned
 
 - [ ] Add screenshots and diagrams to completed documentation
-- [ ] Install Cisco managed switch
+- [ ] Migrate homelab Ethernet connections to `sw01` while retaining `sw-home01` for the home network
+- [ ] Validate all lab connectivity on the flat/default VLAN after the physical move
 - [ ] Design and implement VLANs
 - [ ] Deploy OPNsense
 - [ ] Validate cellular backup Internet using the GL.iNet GL-A1300 travel router, a compatible USB LTE modem, and a SIM
@@ -627,7 +675,7 @@ The documentation numbering is intentionally organized around major project phas
 | `02-asset-inventory.md` | Current physical, virtual, service, and monitoring inventory | Active reference |
 | `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
 | `03-proxmox-cluster-build.md` | Proxmox cluster build and current four-node validation | Complete |
-| `04-network-vlans.md` | Managed switching and VLAN design | Planned |
+| `04-network-vlans.md` | Cisco switch baseline, managed switching, and VLAN design | Active / staging documented |
 | `05-opnsense.md` | OPNsense routing/firewalling | Planned |
 | `06-wazuh-siem.md` | Wazuh deployment | Complete |
 | `07-zabbix-monitoring.md` | Infrastructure monitoring | Planned |
@@ -641,6 +689,9 @@ The documentation numbering is intentionally organized around major project phas
 | `15-homelab-operations-checklist.md` | Homelab operations and health checklist | Active reference |
 | `16-proxmox-node-expansion.md` | Fourth-node expansion and workload rebalancing | Complete |
 | `17-storage-backup-resilience.md` | Storage inventory, CIFS recovery, backup scheduling, and capacity safeguards | Complete |
+| `18-physical-infrastructure.md` | Physical layout, power, ventilation, mounting, and serviceability | Active reference |
+| `19-shutdown-startup-runbook.md` | Controlled full-lab shutdown, startup, validation, and rollback | Active runbook |
+| `20-cabling-standard.md` | Ethernet cable IDs, endpoint labels, port mapping, and cable management | Active reference |
 
 ---
 

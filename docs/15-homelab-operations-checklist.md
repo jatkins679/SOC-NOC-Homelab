@@ -17,9 +17,10 @@ in NOC, SOC, systems-administration, and infrastructure-support roles:
 - document exceptions and follow-up work.
 
 This checklist is intentionally based on the services that are currently
-implemented. Planned systems such as Zabbix, SNMP monitoring, VLAN segmentation,
-and OPNsense are listed separately and should be added to the active checklist
-only after deployment and validation.
+implemented. The Cisco SG350-10 baseline is now staged and receives limited
+configuration/backup checks, while production switch operation, Zabbix, SNMP
+monitoring, VLAN segmentation, and OPNsense remain separate until deployment and
+validation.
 
 ---
 
@@ -32,6 +33,7 @@ only after deployment and validation.
 | `pve03` | Proxmox VE cluster node | `192.168.1.12` |
 | `pve04` | Proxmox VE cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
+| `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
 | `wazuh01` | Wazuh SIEM | `192.168.1.206` |
@@ -322,7 +324,7 @@ These are operational review thresholds, not hard product limits.
 
 ## 3.3 Backup Visibility
 
-Verify Proxmox can enumerate the backup destination:
+Verify Proxmox can list the backup destination contents:
 
 ```bash
 pvesm list t-20-backup
@@ -508,6 +510,22 @@ Also verify DNS resolution for:
 ```text
 dc01.corp.home.arpa
 ```
+
+---
+
+## 3.7 Cisco Switch Staging Check
+
+Until `sw01` becomes the active homelab switching path, perform only the checks
+that match its actual staged state:
+
+- confirm `192.168.1.21` is still the intended unique management address;
+- confirm the stored baseline configuration backup remains available;
+- record firmware if it changes;
+- use `show vlan` to confirm that no unplanned segmentation was introduced;
+- keep the physical port/cable map current as devices are connected.
+
+After the physical migration, move link-state, interface-counter, VLAN, trunk,
+SNMP, syslog, and SPAN checks into the regular active operations schedule.
 
 ---
 
@@ -800,6 +818,8 @@ Before a significant infrastructure change:
 - [ ] Validate service afterward.
 - [ ] Update documentation.
 - [ ] Commit relevant repository changes.
+- [ ] For physical/network changes, photograph or record the pre-change cable/port state.
+- [ ] Verify both ends of affected Ethernet cables are labeled before disconnecting them.
 
 ---
 
@@ -975,18 +995,22 @@ Ticket / Documentation Reference:
 When the following systems become operational, add them to the active
 operations checklist:
 
-## Cisco Managed Switch
+## Cisco Managed Switch — After Physical Deployment
 
-Future checks:
+Baseline staging is complete. After `sw01` begins carrying homelab traffic, add:
 
-- switch reachable;
+- switch reachability;
 - interfaces up/down;
 - error counters;
 - VLAN membership;
 - trunk state;
+- configuration-backup freshness;
 - SNMPv3;
 - syslog;
 - SPAN configuration where used.
+
+Do not mark VLAN, trunk, SNMP, syslog, or SPAN checks complete before those
+features are actually configured and validated.
 
 ## Zabbix
 
@@ -1080,6 +1104,10 @@ This operational checklist demonstrates understanding of:
 | Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | Pi-hole DNS | [`02-pihole-migration.md`](02-pihole-migration.md) |
 | Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
+| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
+| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
+| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
+| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
 | Wazuh SIEM | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
 | Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |

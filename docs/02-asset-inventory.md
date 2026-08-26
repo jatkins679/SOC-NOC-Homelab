@@ -29,6 +29,7 @@ system is not presented as though it is already deployed.
 | **Operational** | Deployed and verified in the current lab |
 | **Operational / DHCP** | Deployed, but the observed address may change |
 | **Supporting infrastructure** | Active equipment supporting the lab or home network |
+| **Staged** | Configured and validated for deployment but not yet carrying its intended live role |
 | **Planned** | Intended for a later phase but not yet documented as operational |
 | **Historical / legacy** | Previously present and retained only for rebuild/history context |
 | **Verify** | Asset is known, but a current operational detail still needs to be revalidated |
@@ -44,7 +45,7 @@ system is not presented as though it is already deployed.
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent administration host | **Operational** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
-| `sw01` | Cisco SG350-10 managed switch | Not assigned; awaiting delivery | Managed lab switching, VLANs, SNMP, CLI, SPAN | **Purchased / awaiting delivery** |
+| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; future VLANs, SNMP, syslog, and SPAN | **Staged** |
 | `cellular-wan01` | GL.iNet GL-A1300 travel router + compatible USB LTE modem/SIM | Planned | Backup Internet connectivity and WAN-failover testing | **Planned** |
 | `fw01` | OPNsense virtual firewall | Planned | Lab routing, firewalling, inter-VLAN policy | **Planned** |
 | `zabbix01` | Linux VM | Planned | NOC monitoring / availability / SNMP | **Planned** |
@@ -61,8 +62,8 @@ with the default route through:
 192.168.1.254
 ```
 
-The planned VLAN and OPNsense design is documented separately and is not treated
-as operational in this inventory.
+The Cisco switch baseline is now staged and documented separately. VLAN and
+OPNsense design remains planned and is not treated as operational in this inventory.
 
 ---
 
@@ -304,11 +305,12 @@ physical rebuild continues.
 # 8. Planned Infrastructure
 
 The following assets or services are part of the target architecture but are not
-listed as operational until they have been configured and validated.
+listed as operational until they have been configured and validated. `sw01` no
+longer appears in this table because its baseline configuration has been completed
+and it is now tracked as **Staged** in the current network inventory.
 
 | Asset | Planned Role | State |
 |---|---|---|
-| `sw01` | Cisco managed lab switch | Purchased / awaiting delivery |
 | `cellular-wan01` | Backup Internet via GL.iNet GL-A1300, compatible USB LTE modem, and SIM | Planned / compatibility and failover testing required |
 | `fw01` | OPNsense firewall/router | Planned |
 | `zabbix01` | Zabbix NOC monitoring server | Planned |
@@ -383,6 +385,7 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.12` | `pve03` |
 | `192.168.1.13` | `pve04` |
 | `192.168.1.20` | `dns01` |
+| `192.168.1.21` | `sw01` (staged management address) |
 | `192.168.1.30` | `dc01` |
 | `192.168.1.151` | `apache-guacamole` |
 | `192.168.1.206` | `wazuh01` |
@@ -440,6 +443,7 @@ Physical / infrastructure
 ├── mgmt01
 ├── dns01
 ├── storage01
+├── sw01 (staged)
 ├── pve01
 ├── pve02
 ├── pve03
@@ -467,6 +471,6 @@ Additional services
 └── sqlserver2025
 ```
 
-The next major inventory changes are expected when the managed Cisco switch,
-VLAN segmentation, OPNsense, and NOC monitoring stack are deployed and
-validated.
+The next major inventory changes are expected when homelab connections are moved
+to the staged Cisco switch and validated, followed by VLAN segmentation,
+OPNsense, and the NOC monitoring stack.

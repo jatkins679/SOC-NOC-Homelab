@@ -131,8 +131,9 @@ the dedicated Zabbix/SNMP phase is not yet complete.
 | Root-cause analysis | **Demonstrated** | Diagnosed Wazuh/OpenSearch installation failure caused by guest storage allocation | Failure → storage diagnosis → rebuild/recovery → service validation | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Asset management | **Demonstrated** | Current-state asset, IP, role and monitoring inventory | Operational/planned distinction maintained | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | Network monitoring with Zabbix | **Planned** | Dedicated NOC monitoring server and agents | Not yet claimed as operational | `07-zabbix-monitoring.md` |
+| Cisco managed-switch baseline / CLI | **Demonstrated** | Bench-configured Cisco SG350-10 as `sw01`; assigned management address, validated firmware and VLAN state, and exported a baseline configuration | `show version`, `show vlan`, configuration backup, staging record | [`04-network-vlans.md`](04-network-vlans.md) |
 | SNMP monitoring | **Planned** | Cisco switch and infrastructure telemetry | Not yet claimed as operational | Future network-monitoring phase |
-| Managed switching / CLI | **Planned** | Cisco SG350-10 configuration and operations | Not yet claimed as operational | `04-network-vlans.md` |
+| Managed-switch production operation | **In progress / planned** | Move homelab links to `sw01`, validate port/link state, then operate it as the lab switching platform | Physical deployment and post-move validation still pending | [`04-network-vlans.md`](04-network-vlans.md) |
 | VLAN segmentation | **Planned** | Management/server/user/SOC/attack networks | Not yet claimed as operational | `04-network-vlans.md` |
 | OPNsense firewalling / routing | **Planned** | Inter-VLAN routing, firewall policy, NAT and telemetry | Not yet claimed as operational | `05-opnsense.md` |
 
@@ -281,7 +282,7 @@ See:
 
 ## Next Skills to Convert From Planned to Demonstrated
 
-- Cisco managed-switch CLI administration
+- Cisco managed-switch production cutover and port operations
 - VLAN implementation
 - 802.1Q trunking
 - SNMPv3
@@ -307,6 +308,7 @@ the implementation and validation evidence exists.
 | Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | DNS / Pi-hole | [`02-pihole-migration.md`](02-pihole-migration.md) |
 | Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
+| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
 | Wazuh SIEM | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
 | Detection exercises | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |

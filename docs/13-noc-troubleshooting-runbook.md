@@ -113,6 +113,7 @@ Examples:
 | `pve03` | Proxmox cluster node | `192.168.1.12` |
 | `pve04` | Proxmox cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
+| `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
 | `wazuh01` | Wazuh SIEM | `192.168.1.206` |
@@ -628,7 +629,7 @@ pvesm list t-20-backup
 ```
 
 This is more useful than simply seeing a mount point because it confirms
-Proxmox can enumerate content through its storage configuration.
+Proxmox can list content through its storage configuration.
 
 ## Inspect Mounts
 
@@ -951,7 +952,102 @@ does not prove successful web authentication or correct application behavior.
 
 ---
 
-# 19. Dependency Mapping
+# 19. Cisco Managed Switch / Link Troubleshooting
+
+This section applies to the Cisco SG350-10 staged as `sw01`. Until the physical
+homelab migration is complete, distinguish **switch staging problems** from
+problems on the current live TRENDnet path.
+
+## Baseline State
+
+Verified staging details:
+
+```text
+Hostname:             sw01
+Management address:   192.168.1.21/24
+Active image:         2.5.9.55
+Inactive image:       2.5.0.83
+Current VLAN state:   VLAN 1 / default flat configuration
+Baseline config:      backed up before deployment
+```
+
+The observed default VLAN state showed VLAN 1 with `gi1-10` and `Po1-8`
+untagged. VLAN segmentation is therefore **not** yet an operational dependency.
+
+## Check Switch Identity and Firmware
+
+```text
+show version
+```
+
+Confirm that the expected active image is present before troubleshooting a
+configuration-specific symptom.
+
+## Check VLAN Membership
+
+```text
+show vlan
+```
+
+During the initial flat-network migration, an unexpected tagged/untagged state
+can isolate a device even when link lights are present.
+
+## Check the Physical Layer First
+
+For a single failed link:
+
+1. Verify device power.
+2. Verify the cable is seated at both ends.
+3. Verify the `C##` cable label matches the intended endpoint.
+4. Verify the switch port matches the cabling record.
+5. Check link state and port counters at the switch.
+6. Test with a known-good cable before changing VLAN configuration.
+
+The accepted initial port convention reserves:
+
+```text
+Gi1  pve01
+Gi2  pve02
+Gi3  pve03
+Gi4  pve04
+Gi8  upstream / BGW320
+```
+
+Other endpoint ports should be recorded during the physical rebuild rather than
+assumed from memory.
+
+## If Multiple Lab Devices Fail at Once
+
+Prioritize shared dependencies:
+
+```text
+BGW320 / upstream
+      ↓
+sw01
+      ↓
+multiple lab endpoints
+```
+
+Check the upstream link, switch power, management reachability, and VLAN state
+before troubleshooting individual servers.
+
+## Rollback During Initial Deployment
+
+If the Cisco migration causes broad loss of connectivity before VLAN work has
+begun:
+
+1. stop making configuration changes;
+2. preserve the current `sw01` state;
+3. restore affected lab cables to the previously working TRENDnet path;
+4. verify `192.168.1.0/24` connectivity and DNS;
+5. review the physical/port map and switch configuration before retrying.
+
+The rollback goal is restoration of the known-good flat network, not completion
+of the managed-switch change at all costs.
+
+---
+
+# 20. Dependency Mapping
 
 When a service fails, identify what it depends on.
 
@@ -1009,7 +1105,7 @@ Dependency thinking prevents wasting time on unrelated components.
 
 ---
 
-# 20. Change One Thing
+# 21. Change One Thing
 
 Avoid troubleshooting by changing:
 
@@ -1042,7 +1138,7 @@ Negative results still narrow the problem.
 
 ---
 
-# 21. Service Restoration Verification
+# 22. Service Restoration Verification
 
 A service is not considered restored simply because a daemon starts.
 
@@ -1092,7 +1188,7 @@ guest visible/running
 
 ---
 
-# 22. Escalation / Handoff Template
+# 23. Escalation / Handoff Template
 
 In a professional NOC, escalation should include useful evidence.
 
@@ -1128,7 +1224,7 @@ repeating the entire discovery process.
 
 ---
 
-# 23. Incident Notes Template
+# 24. Incident Notes Template
 
 ```text
 Date / Time:
@@ -1179,7 +1275,7 @@ Follow-Up:
 
 ---
 
-# 24. Useful Command Reference
+# 25. Useful Command Reference
 
 | Command | Purpose |
 |---|---|
@@ -1211,7 +1307,7 @@ Follow-Up:
 
 ---
 
-# 25. Skills Demonstrated
+# 26. Skills Demonstrated
 
 This runbook supports hands-on experience with:
 
@@ -1226,6 +1322,9 @@ This runbook supports hands-on experience with:
 - Dependency mapping
 - Incident prioritization
 - Operational escalation
+- Managed-switch baseline validation
+- Physical-link and switch-port troubleshooting
+- Flat-network rollback planning
 
 ## Systems Administration
 
@@ -1260,7 +1359,7 @@ This runbook supports hands-on experience with:
 
 ---
 
-# 26. Related Repository Documentation
+# 27. Related Repository Documentation
 
 | Area | Document |
 |---|---|
@@ -1268,6 +1367,10 @@ This runbook supports hands-on experience with:
 | Asset / IP reference | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | DNS migration | [`02-pihole-migration.md`](02-pihole-migration.md) |
 | Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
+| Cisco switch / VLAN staging | [`04-network-vlans.md`](04-network-vlans.md) |
+| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
+| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
+| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
 | Wazuh deployment / troubleshooting | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
 | Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
@@ -1276,7 +1379,7 @@ This runbook supports hands-on experience with:
 
 ---
 
-# 27. Summary
+# 28. Summary
 
 The operational troubleshooting model used in this lab is:
 

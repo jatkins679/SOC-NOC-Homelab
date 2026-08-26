@@ -895,7 +895,7 @@ Confirm that Proxmox itself can:
 
 - see the storage;
 - report it active;
-- enumerate existing backup content.
+- list existing backup content.
 
 ## Validation
 
@@ -1085,6 +1085,108 @@ Unauthorized account creation may indicate:
 
 ---
 
+# Ticket 16 — Cisco SG350-10 Baseline and Deployment Preparation
+
+## Type
+
+Planned infrastructure change / pre-deployment staging
+
+## Priority
+
+P4 — Planned
+
+## Affected Systems
+
+```text
+sw01
+Cisco SG350-10
+192.168.1.21/24
+```
+
+## Change Objective
+
+Prepare the Cisco SG350-10 as the managed homelab switch without disrupting the
+existing home network or prematurely claiming VLAN segmentation as operational.
+
+## Pre-Change Controls
+
+- Kept the switch isolated from the live LAN until it had a unique management address.
+- Used the hostname `sw01`.
+- Assigned fixed management address `192.168.1.21/24`.
+- Preserved the existing TRENDnet switch as the home-network switching path.
+- Established a rollback path before moving physical lab links.
+
+## Validation Performed
+
+Firmware state was checked from the CLI:
+
+```text
+show version
+```
+
+Verified images:
+
+```text
+Active:    2.5.9.55
+Inactive:  2.5.0.83
+```
+
+The VLAN database was checked:
+
+```text
+show vlan
+```
+
+Observed baseline state:
+
+```text
+VLAN 1
+Untagged: gi1-10, Po1-8
+```
+
+A baseline startup-configuration backup was downloaded before physical
+deployment.
+
+## Initial Port Convention
+
+```text
+Gi1  pve01
+Gi2  pve02
+Gi3  pve03
+Gi4  pve04
+Gi8  upstream / BGW320
+```
+
+Remaining endpoint ports will be recorded during the physical rebuild rather
+than inferred later.
+
+## Current Status
+
+**Staging complete; physical lab migration pending.**
+
+The switch is ready for a controlled physical deployment, but VLANs, trunking,
+SNMP, syslog, SPAN, OPNsense routing, and inter-VLAN policy are not yet presented
+as operational.
+
+## Rollback Plan
+
+If the initial physical migration causes broad lab connectivity loss:
+
+1. stop additional switch changes;
+2. reconnect affected lab devices to the previously working TRENDnet path;
+3. confirm flat `192.168.1.0/24` connectivity and DNS;
+4. compare the physical cable map with `sw01` port/VLAN state;
+5. correct and retest before resuming the change.
+
+## Documentation / Evidence
+
+- [`04-network-vlans.md`](04-network-vlans.md)
+- [`18-physical-infrastructure.md`](18-physical-infrastructure.md)
+- [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md)
+- [`20-cabling-standard.md`](20-cabling-standard.md)
+
+---
+
 # Ticket Writing Guidelines
 
 A useful ticket should answer:
@@ -1209,6 +1311,8 @@ These ticket examples demonstrate:
 - Storage validation
 - Service restoration
 - Operational handoff
+- Managed-switch deployment preparation
+- Physical-layer rollback planning
 
 ## Systems Administration
 
@@ -1238,6 +1342,10 @@ These ticket examples demonstrate:
 | Backup / recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
 | Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | Pi-hole migration | [`02-pihole-migration.md`](02-pihole-migration.md) |
+| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
+| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
+| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
+| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
 | Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
 | Wazuh deployment | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
 | Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |

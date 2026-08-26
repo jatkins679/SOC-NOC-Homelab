@@ -1,8 +1,6 @@
 # Current Homelab Architecture
 
-This diagram reflects the implemented lab after the `pve04` expansion and
-workload rebalancing, but before the planned Cisco managed-switch, VLAN, and
-OPNsense phase.
+This diagram reflects the implemented lab after the `pve04` expansion and workload rebalancing. The Cisco SG350-10 has now been bench-configured as `sw01`, but the diagram continues to show the current live flat-network path until the physical homelab migration is completed and validated.
 
 ```mermaid
 flowchart TB
@@ -39,6 +37,7 @@ flowchart TB
 - `wazuh01` runs on `pve03`; `vulnscan01` runs on `pve04`.
 - VM disks remain local to each node; backups provide recovery protection.
 - This design does not claim Ceph, Proxmox HA, or automatic workload failover.
+- `sw01` is a staged Cisco SG350-10 at `192.168.1.21/24`; firmware, default VLAN state, and a baseline configuration backup have been validated, but it is not yet shown as the current live switching path.
 
 ## Security and Identity Paths
 
@@ -56,10 +55,7 @@ validated.
 
 ## Planned Network Phase
 
-The current switch is a 16-port unmanaged TRENDnet TEG-S160G. A Cisco SG350-10
-has been purchased and is awaiting delivery for the managed-switch phase. VLAN
-segmentation, a second `pve04` Ethernet adapter, and OPNsense routing will be
-documented only after those components are implemented and validated.
+The current live switch path remains the 16-port unmanaged TRENDnet TEG-S160G. The Cisco SG350-10 has been received and staged as `sw01` with management address `192.168.1.21/24`. The initial port convention reserves Gi1-Gi4 for `pve01`-`pve04` and Gi8 for the upstream connection. Final port use, VLAN segmentation, additional Proxmox interfaces where required, and OPNsense routing will be documented only after the physical migration and VLAN work are implemented and validated. The TRENDnet remains the home-network switch rather than being replaced by `sw01`.
 
 A separate future resilience test will use the existing GL.iNet GL-A1300 travel
 router with a compatible USB LTE modem and SIM as a backup Internet connection.
