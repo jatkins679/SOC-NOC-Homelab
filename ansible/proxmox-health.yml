@@ -1,0 +1,34 @@
+---
+- name: Proxmox cluster health check
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Check hostname
+      ansible.builtin.command: hostname
+      register: hostname_result
+      changed_when: false
+
+    - name: Check Proxmox version
+      ansible.builtin.command: pveversion
+      register: pveversion_result
+      changed_when: false
+
+    - name: Check uptime
+      ansible.builtin.command: uptime -p
+      register: uptime_result
+      changed_when: false
+
+    - name: Check storage state
+      ansible.builtin.command: pvesm status
+      register: storage_result
+      changed_when: false
+
+    - name: Display node summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ hostname_result.stdout }}"
+          - "Version: {{ pveversion_result.stdout }}"
+          - "Uptime: {{ uptime_result.stdout }}"
+          - "Storage:"
+          - "{{ storage_result.stdout_lines }}"

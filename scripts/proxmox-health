@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -u
+
+REPO="$HOME/SOC-NOC-Homelab"
+
+if [ ! -d "$REPO" ]; then
+    echo "ERROR: Repository not found at $REPO"
+    exit 1
+fi
+
+cd "$REPO" || exit 1
+
+exec ansible-playbook \
+    -i ansible/inventory.ini \
+    ansible/proxmox-health.yml
