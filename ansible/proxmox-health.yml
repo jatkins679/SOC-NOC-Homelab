@@ -121,6 +121,59 @@
           load5={{ load5.stdout }},
           CPUs={{ cpu_count.stdout }}
 
+    - name: Read recent backup tasks
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/nodes/{{ inventory_hostname }}/tasks"
+          - --typefilter
+          - vzdump
+          - --limit
+          - "10"
+          - --output-format
+          - json
+      register: backup_tasks_raw
+      changed_when: false
+
+    - name: Parse recent backup tasks
+      ansible.builtin.set_fact:
+        backup_tasks: "{{ backup_tasks_raw.stdout | from_json }}"
+
+    - name: Read current epoch time
+      ansible.builtin.command: date +%s
+      register: backup_current_epoch
+      changed_when: false
+
+    - name: Identify latest successful backup
+      ansible.builtin.set_fact:
+        latest_successful_backup: >-
+          {{
+            (backup_tasks
+             | selectattr('status', 'equalto', 'OK')
+             | list
+             | first)
+            | default({})
+          }}
+
+    - name: Verify a successful backup exists within 36 hours
+      ansible.builtin.assert:
+        that:
+          - "latest_successful_backup | length > 0"
+          - "(backup_current_epoch.stdout | int) - (latest_successful_backup.get('endtime', 0) | int) < 129600"
+        fail_msg: "No successful backup within 36 hours on {{ inventory_hostname }}"
+        success_msg: "Recent successful backup exists on {{ inventory_hostname }}"
+
+    - name: Verify latest backup attempt succeeded
+      ansible.builtin.assert:
+        that:
+          - "backup_tasks | length > 0"
+          - "backup_tasks[0].status == 'OK'"
+        fail_msg: >-
+          Latest backup attempt FAILED on {{ inventory_hostname }}:
+          {{ backup_tasks[0].status | default('unknown status') }}
+        success_msg: "Latest backup attempt succeeded on {{ inventory_hostname }}"
+
     - name: Display node summary
       ansible.builtin.debug:
         msg:
@@ -166,6 +219,53 @@
           - "hostvars['pve01'].pveversion_result.stdout == hostvars['pve04'].pveversion_result.stdout"
         fail_msg: "Proxmox version or running kernel differs between nodes"
         success_msg: "All Proxmox nodes report the same version and running kernel"
+
+    - name: Find newest Proxmox backup
+      ansible.builtin.shell: |
+        find /mnt/pve/t-20-backup/dump \
+          -maxdepth 1 \
+          -type f \
+          \( -name '*.vma.zst' -o \
+             -name '*.tar.zst' -o \
+             -name '*.vma.lzo' -o \
+             -name '*.tar.lzo' -o \
+             -name '*.vma.gz' -o \
+             -name '*.tar.gz' \) \
+          -printf '%T@\n' 2>/dev/null |
+        sort -nr |
+        head -1 |
+        cut -d. -f1
+      register: newest_backup_epoch
+      changed_when: false
+
+    - name: Read current time
+      ansible.builtin.command: date +%s
+      register: current_epoch
+      changed_when: false
+
+    - name: Verify a recent backup exists
+      ansible.builtin.assert:
+        that:
+          - "newest_backup_epoch.stdout | length > 0"
+          - "(current_epoch.stdout | int) - (newest_backup_epoch.stdout | int) < 129600"
+        fail_msg: "No Proxmox backup newer than 36 hours was found on t-20-backup"
+        success_msg: "A Proxmox backup newer than 36 hours exists on t-20-backup"
+
+    - name: Read newest backup timestamp
+      ansible.builtin.command:
+        argv:
+          - date
+          - -d
+          - "@{{ newest_backup_epoch.stdout }}"
+          - "+%Y-%m-%d %H:%M:%S %Z"
+      register: newest_backup_time
+      changed_when: false
+      when: newest_backup_epoch.stdout | length > 0
+
+    - name: Display newest backup time
+      ansible.builtin.debug:
+        msg: "Newest backup: {{ newest_backup_time.stdout }}"
+      when: newest_backup_epoch.stdout | length > 0
 
     - name: Display cluster status
       ansible.builtin.debug:
