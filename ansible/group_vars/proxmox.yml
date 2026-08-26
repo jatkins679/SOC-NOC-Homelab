@@ -1,0 +1,29 @@
+---
+expected_running_guests:
+  pve01:
+    vms:
+      - id: 100
+        name: dc01
+      - id: 210
+        name: docker
+    lxcs:
+      - id: 200
+        name: apache-guacamole
+      - id: 201
+        name: pialert
+
+  pve02:
+    vms: []
+    lxcs: []
+
+  pve03:
+    vms:
+      - id: 102
+        name: nms01
+      - id: 500
+        name: wazuh01
+    lxcs: []
+
+  pve04:
+    vms: []
+    lxcs: []

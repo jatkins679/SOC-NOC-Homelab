@@ -192,6 +192,44 @@
           - "LXCs:"
           - "{{ lxc_inventory.stdout_lines }}"
 
+    - name: Check expected running VMs
+      ansible.builtin.command: "qm status {{ item.id }}"
+      loop: "{{ expected_running_guests[inventory_hostname].vms }}"
+      loop_control:
+        label: "{{ item.id }} {{ item.name }}"
+      register: expected_vm_status
+      changed_when: false
+      failed_when: false
+
+    - name: Verify expected VMs are running
+      ansible.builtin.assert:
+        that:
+          - "'status: running' in item.stdout"
+        fail_msg: "VM {{ item.item.id }} {{ item.item.name }} is NOT running on {{ inventory_hostname }}"
+        success_msg: "VM {{ item.item.id }} {{ item.item.name }} is running"
+      loop: "{{ expected_vm_status.results }}"
+      loop_control:
+        label: "{{ item.item.id }} {{ item.item.name }}"
+
+    - name: Check expected running LXCs
+      ansible.builtin.command: "pct status {{ item.id }}"
+      loop: "{{ expected_running_guests[inventory_hostname].lxcs }}"
+      loop_control:
+        label: "{{ item.id }} {{ item.name }}"
+      register: expected_lxc_status
+      changed_when: false
+      failed_when: false
+
+    - name: Verify expected LXCs are running
+      ansible.builtin.assert:
+        that:
+          - "'status: running' in item.stdout"
+        fail_msg: "LXC {{ item.item.id }} {{ item.item.name }} is NOT running on {{ inventory_hostname }}"
+        success_msg: "LXC {{ item.item.id }} {{ item.item.name }} is running"
+      loop: "{{ expected_lxc_status.results }}"
+      loop_control:
+        label: "{{ item.item.id }} {{ item.item.name }}"
+
     - name: Display node summary
       ansible.builtin.debug:
         msg:
