@@ -3,6 +3,8 @@
 set -u
 
 REPO="$HOME/SOC-NOC-Homelab"
+INVENTORY="$REPO/ansible/inventory.ini"
+PLAYBOOK="$REPO/ansible/proxmox-health.yml"
 
 if [ ! -d "$REPO" ]; then
     echo "ERROR: Repository not found at $REPO"
@@ -11,6 +13,35 @@ fi
 
 cd "$REPO" || exit 1
 
+if [ "${1:-}" = "--brief" ]; then
+    set -o pipefail
+
+    ansible-playbook \
+        -i "$INVENTORY" \
+        "$PLAYBOOK" 2>&1 |
+    awk '
+        /"msg": "/ {
+            line=$0
+            sub(/^.*"msg": "/, "", line)
+            sub(/"[,]?$/, "", line)
+            print "  " line
+        }
+
+        /^PLAY RECAP/ {
+            print ""
+            print
+            recap=1
+            next
+        }
+
+        recap && /^pve0[1-4][[:space:]]/ {
+            print
+        }
+    '
+
+    exit "${PIPESTATUS[0]}"
+fi
+
 exec ansible-playbook \
-    -i ansible/inventory.ini \
-    ansible/proxmox-health.yml
+    -i "$INVENTORY" \
+    "$PLAYBOOK"
