@@ -339,6 +339,43 @@ Questions:
 
 Do not assume a scheduled backup succeeded because the schedule exists.
 
+If `t-20-backup` becomes unavailable after a reboot or power interruption,
+check the storage-server dependency chain before modifying the Proxmox storage
+definition:
+
+```text
+Drobo / attached storage
+        ↓
+Windows volume
+        ↓
+SMB share and LanmanServer
+        ↓
+Windows network profile / firewall
+        ↓
+TCP 445 reachability
+        ↓
+Proxmox CIFS storage
+```
+
+Useful checks on `storage01`:
+
+```powershell
+Get-Service LanmanServer
+Get-SmbShare
+Get-NetConnectionProfile
+```
+
+The trusted home-LAN Ethernet connection should normally be classified as
+`Private`.
+
+From Proxmox:
+
+```bash
+nc -nvz -w 3 192.168.1.208 445
+pvesm status
+pvesm list t-20-backup
+```
+
 Current expected coverage is one recent archive for each guest ID:
 
 ```text

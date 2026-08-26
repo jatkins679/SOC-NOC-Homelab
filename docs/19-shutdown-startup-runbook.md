@@ -179,6 +179,33 @@ Power and validate:
 Confirm basic DNS and SMB/CIFS availability before relying on them from the
 cluster.
 
+After an unexpected power loss or reboot, validate the Windows storage host
+before assuming the Proxmox CIFS configuration has failed.
+
+On `storage01`:
+
+```powershell
+Get-Service LanmanServer
+Get-SmbShare
+Get-NetConnectionProfile
+```
+
+Confirm:
+
+- the Drobo volume is mounted;
+- the `ProxmoxBackups` share exists;
+- `LanmanServer` is running;
+- the active Ethernet connection is classified as `Private`.
+
+From a Proxmox node, verify SMB reachability:
+
+```bash
+nc -nvz -w 3 192.168.1.208 445
+```
+
+A Windows Ethernet profile that changes to `Public` can allow the local SMB
+service to remain healthy while Windows Firewall blocks remote access.
+
 ## Step 3 — Start Proxmox Nodes
 
 Power up `pve01` through `pve04`.
@@ -242,7 +269,11 @@ Validate at least:
 ## Storage / Backups
 
 - [ ] `storage01` reachable at `192.168.1.208`.
+- [ ] Drobo / attached storage mounted normally.
+- [ ] Windows Ethernet profile on `storage01` is `Private`.
+- [ ] SMB TCP 445 reachable from a Proxmox node.
 - [ ] `t-20-backup` active in Proxmox.
+- [ ] `pvesm list t-20-backup` returns expected backup contents.
 - [ ] No storage device reports an unexpected fault.
 
 ## Proxmox
