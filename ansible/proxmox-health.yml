@@ -61,12 +61,76 @@
       loop_control:
         label: "{{ item.item }}"
 
+    - name: Read root filesystem usage
+      ansible.builtin.shell: |
+        df -P / | awk 'NR==2 {gsub(/%/, "", $5); print $5}'
+      register: root_fs_pct
+      changed_when: false
+
+    - name: Read memory usage
+      ansible.builtin.shell: |
+        awk '
+        /MemTotal:/ { total=$2 }
+        /MemAvailable:/ { avail=$2 }
+        END { printf "%.0f\n", ((total-avail)/total)*100 }
+        ' /proc/meminfo
+      register: memory_used_pct
+      changed_when: false
+
+    - name: Read swap usage
+      ansible.builtin.shell: |
+        free -m | awk '/^Swap:/ {
+          if ($2 == 0)
+            print 0
+          else
+            printf "%.0f\n", ($3/$2)*100
+        }'
+      register: swap_used_pct
+      changed_when: false
+
+    - name: Read five-minute load average
+      ansible.builtin.shell: |
+        awk '{print $2}' /proc/loadavg
+      register: load5
+      changed_when: false
+
+    - name: Read CPU count
+      ansible.builtin.command: nproc
+      register: cpu_count
+      changed_when: false
+
+    - name: Verify resource pressure is within limits
+      ansible.builtin.assert:
+        that:
+          - "root_fs_pct.stdout | int < 90"
+          - "memory_used_pct.stdout | int < 95"
+          - "swap_used_pct.stdout | int < 80"
+          - "load5.stdout | float < (cpu_count.stdout | int) * 2"
+        fail_msg: >-
+          Resource pressure detected on {{ inventory_hostname }}:
+          root={{ root_fs_pct.stdout }}%,
+          memory={{ memory_used_pct.stdout }}%,
+          swap={{ swap_used_pct.stdout }}%,
+          load5={{ load5.stdout }},
+          CPUs={{ cpu_count.stdout }}
+        success_msg: >-
+          Resource pressure normal on {{ inventory_hostname }}:
+          root={{ root_fs_pct.stdout }}%,
+          memory={{ memory_used_pct.stdout }}%,
+          swap={{ swap_used_pct.stdout }}%,
+          load5={{ load5.stdout }},
+          CPUs={{ cpu_count.stdout }}
+
     - name: Display node summary
       ansible.builtin.debug:
         msg:
           - "Host: {{ hostname_result.stdout }}"
           - "Version: {{ pveversion_result.stdout }}"
           - "Uptime: {{ uptime_result.stdout }}"
+          - "Root filesystem: {{ root_fs_pct.stdout }}% used"
+          - "Memory: {{ memory_used_pct.stdout }}% used"
+          - "Swap: {{ swap_used_pct.stdout }}% used"
+          - "5-minute load: {{ load5.stdout }} across {{ cpu_count.stdout }} CPUs"
 
 - name: Proxmox cluster quorum and consistency check
   hosts: pve01
