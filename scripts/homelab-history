@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+set -u
+
+LOGDIR="${XDG_STATE_HOME:-$HOME/.local/state}/homelab"
+COUNT="${1:-20}"
+
+if [ ! -d "$LOGDIR" ]; then
+    echo "No homelab status history found."
+    exit 1
+fi
+
+printf "\nHomelab Status History\n\n"
+printf "%-20s %-20s\n" "RUN" "STATUS"
+printf "%-20s %-20s\n" "--------------------" "--------------------"
+
+mapfile -t logs < <(
+    find "$LOGDIR" \
+        -maxdepth 1 \
+        -type f \
+        -name 'homelab-status-*.log' \
+        -printf '%f\n' |
+    sort -r |
+    head -n "$COUNT"
+)
+
+if [ "${#logs[@]}" -eq 0 ]; then
+    echo "No status logs found."
+    exit 0
+fi
+
+for log in "${logs[@]}"; do
+    path="$LOGDIR/$log"
+
+    run="${log#homelab-status-}"
+    run="${run%.log}"
+
+    if grep -q 'OVERALL STATUS: HEALTHY' "$path"; then
+        status="HEALTHY"
+    elif grep -q 'OVERALL STATUS: ATTENTION REQUIRED' "$path"; then
+        status="ATTENTION REQUIRED"
+    else
+        status="INCOMPLETE"
+    fi
+
+    printf "%-20s %-20s\n" "$run" "$status"
+done
+
+printf "\n"

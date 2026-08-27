@@ -12,6 +12,13 @@ fi
 
 mkdir -p "$LOGDIR"
 
+# Retain 90 days of status logs
+find "$LOGDIR" \
+    -type f \
+    -name 'homelab-status-*.log' \
+    -mtime +90 \
+    -delete
+
 timestamp="$(date '+%Y%m%d-%H%M%S')"
 logfile="$LOGDIR/homelab-status-$timestamp.log"
 
