@@ -116,6 +116,89 @@
         success_msg: "uptime-kuma is running and healthy"
       when: inventory_hostname == 'docker'
 
+    - name: Check LibreNMS supporting services
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      loop:
+        - mariadb
+        - nginx
+        - php8.5-fpm
+        - snmpd
+        - cron
+      register: librenms_services
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'nms01'
+
+    - name: Verify LibreNMS supporting services
+      ansible.builtin.assert:
+        that:
+          - "item.rc == 0"
+          - "item.stdout == 'active'"
+        fail_msg: "LibreNMS dependency {{ item.item }} is not active"
+        success_msg: "LibreNMS dependency {{ item.item }} is active"
+      loop: "{{ librenms_services.results }}"
+      when: inventory_hostname == 'nms01'
+
+    - name: Check LibreNMS scheduler timer
+      ansible.builtin.command: systemctl is-active librenms-scheduler.timer
+      register: librenms_timer
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'nms01'
+
+    - name: Verify LibreNMS scheduler timer
+      ansible.builtin.assert:
+        that:
+          - "librenms_timer.stdout == 'active'"
+        fail_msg: "LibreNMS scheduler timer is not active"
+        success_msg: "LibreNMS scheduler timer is active"
+      when: inventory_hostname == 'nms01'
+
+    - name: Check LibreNMS local web interface
+      ansible.builtin.command:
+        argv:
+          - curl
+          - -sS
+          - -o
+          - /dev/null
+          - -w
+          - "%{http_code}"
+          - http://127.0.0.1/
+      register: librenms_http
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'nms01'
+
+    - name: Verify LibreNMS local web interface
+      ansible.builtin.assert:
+        that:
+          - "librenms_http.stdout in ['200', '301', '302', '303', '307', '308']"
+        fail_msg: "LibreNMS local HTTP check failed: {{ librenms_http.stdout }}"
+        success_msg: "LibreNMS web interface responding: HTTP {{ librenms_http.stdout }}"
+      when: inventory_hostname == 'nms01'
+
+    - name: Run LibreNMS validation
+      ansible.builtin.command: ./validate.php
+      args:
+        chdir: /opt/librenms
+      become_user: librenms
+      register: librenms_validate
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'nms01'
+
+    - name: Verify LibreNMS core validation
+      ansible.builtin.assert:
+        that:
+          - "librenms_validate.rc == 0"
+          - "'[FAIL]' not in librenms_validate.stdout"
+          - "'Database Connected' in librenms_validate.stdout"
+          - "'Active pollers found' in librenms_validate.stdout"
+          - "'Python poller wrapper is polling' in librenms_validate.stdout"
+        fail_msg: "LibreNMS validation detected a core failure"
+        success_msg: "LibreNMS database and polling validation passed"
+      when: inventory_hostname == 'nms01'
+
     - name: Display Linux host summary
       ansible.builtin.debug:
         msg:
