@@ -30,3 +30,31 @@ Example:
 
 ```bash
 homelab-health
+
+## mgmt01 Management and Health Commands
+
+The independent `mgmt01` management host provides the operational command
+environment for the homelab.
+
+Primary commands:
+
+    homelab-health      Network and service reachability
+    proxmox-health      Proxmox cluster and backup health
+    linux-health        Linux infrastructure health
+    storage-health      Authenticated storage01 / SMB health
+    homelab-status      Consolidated health check
+    homelab-history     Historical health-check results
+
+The management workstation can be configured or rebuilt with:
+
+    scripts/setup-mgmt01
+
+The setup script installs command links, user-level systemd units, the persistent
+SSH-agent configuration, and the hourly health-check timer.
+
+Generated health logs are stored outside the repository under:
+
+    ~/.local/state/homelab/
+
+Secrets, SSH private keys, and the local `storage01` SMB credential file are not
+stored in Git.

@@ -32,6 +32,7 @@ validation.
 | `pve02` | Proxmox VE cluster node | `192.168.1.11` |
 | `pve03` | Proxmox VE cluster node | `192.168.1.12` |
 | `pve04` | Proxmox VE cluster node | `192.168.1.13` |
+| `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 | `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
@@ -47,6 +48,49 @@ validation.
 # 2. Daily Health Check
 
 The daily check is designed to be fast.
+
+## Automated Baseline from `mgmt01`
+
+`mgmt01` provides an independent management and monitoring path for the lab.
+
+The primary consolidated health check is `homelab-status`.
+
+A healthy run ends with `OVERALL STATUS: HEALTHY` and returns exit status `0`.
+
+The consolidated check validates:
+
+- network and critical-service reachability;
+- Proxmox cluster, quorum, storage, backups, resources, and expected guests;
+- Linux infrastructure health on `dns01` and `docker`;
+- Pi-hole FTL status;
+- Docker Engine and Uptime Kuma health;
+- `storage01` ICMP and SMB reachability;
+- authenticated access to the `ProxmoxBackups` share and `dump` directory.
+
+Health-check logs are stored under `~/.local/state/homelab/`.
+
+The most recent run is available as `~/.local/state/homelab/latest.log`.
+
+Recent results can be summarized with `homelab-history`.
+
+The same check runs hourly through the user-level `homelab-status.timer`
+systemd timer.
+
+Service execution history can be reviewed with:
+
+    journalctl --user -u homelab-status.service --no-pager
+
+The management SSH key remains passphrase protected. After a reboot or login,
+load it into the persistent user SSH agent with:
+
+    ssh-add ~/.ssh/id_ed25519
+
+The management workstation can be rebuilt or reconfigured with:
+
+    scripts/setup-mgmt01
+
+Private SSH keys and SMB credentials remain outside the repository.
+
 
 ## 2.1 Proxmox Cluster
 
