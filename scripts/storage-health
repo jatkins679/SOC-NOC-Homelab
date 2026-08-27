@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+set -u
+
+HOST="192.168.1.208"
+SHARE="//192.168.1.208/ProxmoxBackups"
+CREDS="$HOME/.config/homelab/storage01-smb.conf"
+
+printf "\nStorage Health Check\n"
+printf "%s\n\n" "$(date)"
+
+printf "%-22s %s\n" "CHECK" "RESULT"
+printf "%-22s %s\n" "----------------------" "----------------"
+
+failed=0
+
+if ping -c 1 -W 1 "$HOST" >/dev/null 2>&1; then
+    printf "%-22s %s\n" "storage01 ICMP" "OK"
+else
+    printf "%-22s %s\n" "storage01 ICMP" "HOST DOWN"
+    exit 1
+fi
+
+if nc -z -w 2 "$HOST" 445 >/dev/null 2>&1; then
+    printf "%-22s %s\n" "SMB TCP/445" "OK"
+else
+    printf "%-22s %s\n" "SMB TCP/445" "SERVICE DOWN"
+    failed=1
+fi
+
+if [ ! -r "$CREDS" ]; then
+    printf "%-22s %s\n" "SMB credentials" "MISSING"
+    failed=1
+elif smbclient "$SHARE" -A "$CREDS" -c 'quit' >/dev/null 2>&1; then
+    printf "%-22s %s\n" "SMB authentication" "OK"
+else
+    printf "%-22s %s\n" "SMB authentication" "FAILED"
+    failed=1
+fi
+
+if [ "$failed" -eq 0 ]; then
+    if smbclient "$SHARE" -A "$CREDS" \
+        -c 'cd dump; ls' >/dev/null 2>&1; then
+        printf "%-22s %s\n" "Backup dump directory" "OK"
+    else
+        printf "%-22s %s\n" "Backup dump directory" "FAILED"
+        failed=1
+    fi
+fi
+
+printf "\n"
+
+exit "$failed"

@@ -31,11 +31,17 @@ echo "=== Linux Infrastructure Health ==="
 linux_rc=$?
 
 echo
+echo "=== Storage Infrastructure Health ==="
+"$REPO/scripts/storage-health"
+storage_rc=$?
+
+echo
 echo "============================================================"
 
 if [ "$network_rc" -eq 0 ] &&
    [ "$proxmox_rc" -eq 0 ] &&
-   [ "$linux_rc" -eq 0 ]; then
+   [ "$linux_rc" -eq 0 ] &&
+   [ "$storage_rc" -eq 0 ]; then
 
     echo "OVERALL STATUS: HEALTHY"
     rc=0
@@ -44,6 +50,7 @@ else
     echo "Network/service check: $network_rc"
     echo "Proxmox check:        $proxmox_rc"
     echo "Linux check:          $linux_rc"
+    echo "Storage check:        $storage_rc"
     rc=1
 fi
 
