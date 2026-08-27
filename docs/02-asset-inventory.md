@@ -42,13 +42,19 @@ system is not presented as though it is already deployed.
 |---|---|---:|---|---|
 | AT&T gateway | AT&T residential fiber gateway | `192.168.1.254` | Default gateway / Internet edge | Supporting infrastructure |
 | `dns01` | Raspberry Pi 3 Model B+ | `192.168.1.20` | Pi-hole DNS / ad blocking | **Operational** |
-| `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent administration host | **Operational** |
+| `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent management host; SSH/Ansible administration, health monitoring, and operational tooling | **Operational** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
 | `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; future VLANs, SNMP, syslog, and SPAN | **Staged** |
 | `cellular-wan01` | GL.iNet GL-A1300 travel router + compatible USB LTE modem/SIM | Planned | Backup Internet connectivity and WAN-failover testing | **Planned** |
 | `fw01` | OPNsense virtual firewall | Planned | Lab routing, firewalling, inter-VLAN policy | **Planned** |
 | `zabbix01` | Linux VM | Planned | NOC monitoring / availability / SNMP | **Planned** |
+
+`mgmt01` provides an administration path that is independent of the Proxmox
+cluster. It is used for SSH access, Ansible health checks, service reachability
+testing, authenticated SMB validation, and scheduled homelab status checks.
+The management tooling is maintained in this repository, while credentials
+and SSH private keys remain outside the repository.
 
 The current management network remains:
 
@@ -107,7 +113,7 @@ selected workloads were migrated:
 |---|---|
 | `pve01` | `dc01`, `win11-01`, `docker`, `sqlserver2025`, `apache-guacamole`, `pialert` |
 | `pve02` | `kali01`, `target01` |
-| `pve03` | `wazuh01` |
+| `pve03` | `nms01`, `wazuh01` |
 | `pve04` | `vulnscan01` |
 
 VM disks remain on each node's local storage. The shared `t-20-backup` CIFS
