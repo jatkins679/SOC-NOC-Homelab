@@ -1,0 +1,9 @@
+[Unit]
+Description=Run homelab management health check
+Requires=ssh-agent.service
+After=ssh-agent.service
+
+[Service]
+Type=oneshot
+Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
+ExecStart=%h/SOC-NOC-Homelab/scripts/homelab-status
