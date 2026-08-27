@@ -3,11 +3,21 @@
 set -u
 
 REPO="$HOME/SOC-NOC-Homelab"
+LOGDIR="${XDG_STATE_HOME:-$HOME/.local/state}/homelab"
 
 if [ ! -d "$REPO" ]; then
     echo "ERROR: Repository not found at $REPO"
     exit 1
 fi
+
+mkdir -p "$LOGDIR"
+
+timestamp="$(date '+%Y%m%d-%H%M%S')"
+logfile="$LOGDIR/homelab-status-$timestamp.log"
+
+ln -sfn "$(basename "$logfile")" "$LOGDIR/latest.log"
+
+exec > >(tee "$logfile") 2>&1
 
 echo
 echo "============================================================"
@@ -54,6 +64,7 @@ else
     rc=1
 fi
 
+echo "Log: $logfile"
 echo "============================================================"
 echo
 
