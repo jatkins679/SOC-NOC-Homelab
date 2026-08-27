@@ -53,6 +53,12 @@ system is not presented as though it is already deployed.
 `mgmt01` provides an administration path that is independent of the Proxmox
 cluster. It is used for SSH access, Ansible health checks, service reachability
 testing, authenticated SMB validation, and scheduled homelab status checks.
+
+`mgmt01` uses `dns01` (`192.168.1.20`) as its system DNS resolver.
+IPv6 addressing and routing remain enabled, but DNS servers and search domains
+learned through DHCPv6 and IPv6 router advertisements are ignored so that
+AT&T-provided resolver information does not bypass Pi-hole. The local Netplan
+override is stored in `/etc/netplan/90-homelab-dns.yaml`.
 The management tooling is maintained in this repository, while credentials
 and SSH private keys remain outside the repository.
 

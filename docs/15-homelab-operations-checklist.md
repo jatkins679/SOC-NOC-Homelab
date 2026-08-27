@@ -307,6 +307,36 @@ or:
 nslookup example.com
 ```
 
+### mgmt01 Resolver Policy
+
+`mgmt01` is intentionally configured to use `dns01` at `192.168.1.20`
+as its system resolver.
+
+IPv6 remains enabled. The Netplan override:
+
+    /etc/netplan/90-homelab-dns.yaml
+
+prevents DNS servers and search domains learned through both DHCPv6 and IPv6
+router advertisements from overriding or bypassing Pi-hole.
+
+Verify the active resolver with:
+
+    resolvectl dns enx00e04c683e33
+    resolvectl domain enx00e04c683e33
+
+Expected DNS server:
+
+    192.168.1.20
+
+No AT&T-provided IPv6 DNS server or `attlocal.net` search domain should appear.
+
+The automated `homelab-health` check deliberately performs two separate DNS
+tests:
+
+- `dns01 DNS/53` confirms that Pi-hole itself answers DNS queries;
+- `mgmt01 System DNS` confirms that the management host can resolve names
+  through its configured system resolver.
+
 ### Healthy State
 
 ```text
