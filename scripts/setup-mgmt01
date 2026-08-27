@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+USER_SYSTEMD="$HOME/.config/systemd/user"
+BIN_DIR="$HOME/bin"
+SMB_CREDS="$HOME/.config/homelab/storage01-smb.conf"
+BASHRC="$HOME/.bashrc"
+
+echo
+echo "============================================================"
+echo " mgmt01 Homelab Management Setup"
+echo "============================================================"
+echo
+echo "Repository: $REPO"
+echo
+
+# ------------------------------------------------------------
+# Check required commands
+# ------------------------------------------------------------
+
+required_commands=(
+    ansible-playbook
+    smbclient
+    nc
+    ping
+    ssh-add
+    systemctl
+)
+
+missing=()
+
+for cmd in "${required_commands[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        missing+=("$cmd")
+    fi
+done
+
+if [ "${#missing[@]}" -gt 0 ]; then
+    echo "ERROR: Required commands are missing:"
+    printf '  %s\n' "${missing[@]}"
+    exit 1
+fi
+
+echo "Required commands: OK"
+
+# ------------------------------------------------------------
+# Create local directories
+# ------------------------------------------------------------
+
+mkdir -p "$BIN_DIR"
+mkdir -p "$USER_SYSTEMD"
+mkdir -p "$HOME/.config/homelab"
+
+# ------------------------------------------------------------
+# Install command symlinks
+# ------------------------------------------------------------
+
+scripts=(
+    homelab-health
+    proxmox-health
+    linux-health
+    storage-health
+    homelab-status
+    homelab-history
+)
+
+echo
+echo "Installing management command links..."
+
+for script in "${scripts[@]}"; do
+    source="$REPO/scripts/$script"
+
+    if [ -x "$source" ]; then
+        ln -sfn "$source" "$BIN_DIR/$script"
+        echo "  $script: OK"
+    else
+        echo "  $script: MISSING OR NOT EXECUTABLE"
+    fi
+done
+
+# ------------------------------------------------------------
+# Install systemd user-unit symlinks
+# ------------------------------------------------------------
+
+units=(
+    ssh-agent.service
+    homelab-status.service
+    homelab-status.timer
+)
+
+echo
+echo "Installing systemd user units..."
+
+for unit in "${units[@]}"; do
+    source="$REPO/systemd/user/$unit"
+
+    if [ ! -f "$source" ]; then
+        echo "ERROR: Missing unit file: $source"
+        exit 1
+    fi
+
+    ln -sfn "$source" "$USER_SYSTEMD/$unit"
+    echo "  $unit: OK"
+done
+
+# ------------------------------------------------------------
+# Configure fixed SSH-agent socket for interactive shells
+# ------------------------------------------------------------
+
+agent_line='export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"'
+
+if grep -Fqx "$agent_line" "$BASHRC" 2>/dev/null; then
+    echo
+    echo "SSH_AUTH_SOCK configuration: already present"
+else
+    {
+        echo
+        echo "# Homelab persistent user SSH agent"
+        echo "$agent_line"
+    } >> "$BASHRC"
+
+    echo
+    echo "SSH_AUTH_SOCK configuration: added to ~/.bashrc"
+fi
+
+# Use the fixed socket during this setup run as well.
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+
+# ------------------------------------------------------------
+# Protect/check local SMB credentials
+# ------------------------------------------------------------
+
+echo
+
+if [ -f "$SMB_CREDS" ]; then
+    chmod 600 "$SMB_CREDS"
+    echo "storage01 SMB credentials: present"
+    echo "storage01 SMB credential permissions: 600"
+else
+    echo "WARNING: storage01 SMB credentials are not configured."
+    echo "Expected:"
+    echo "  $SMB_CREDS"
+fi
+
+# ------------------------------------------------------------
+# Reload and enable user services
+# ------------------------------------------------------------
+
+echo
+echo "Configuring systemd user services..."
+
+systemctl --user daemon-reload
+systemctl --user enable --now ssh-agent.service
+systemctl --user enable --now homelab-status.timer
+
+echo "  ssh-agent.service: enabled"
+echo "  homelab-status.timer: enabled"
+
+# ------------------------------------------------------------
+# Check SSH-agent state
+# ------------------------------------------------------------
+
+echo
+
+if [ -S "$SSH_AUTH_SOCK" ]; then
+    echo "SSH agent socket: $SSH_AUTH_SOCK"
+
+    if ssh-add -l >/dev/null 2>&1; then
+        echo "SSH key state: READY"
+        ssh-add -l
+    else
+        echo "SSH key state: NO KEY LOADED"
+        echo
+        echo "Run:"
+        echo "  ssh-add ~/.ssh/id_ed25519"
+    fi
+else
+    echo "WARNING: SSH agent socket was not created."
+fi
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+echo
+echo "Timer:"
+systemctl --user list-timers --all |
+    grep homelab-status || true
+
+echo
+echo "============================================================"
+echo " Setup complete"
+echo "============================================================"
+echo
+echo "After a reboot/login:"
+echo
+echo "  ssh-add ~/.ssh/id_ed25519"
+echo
+echo "Then verify with:"
+echo
+echo "  homelab-status"
+echo
