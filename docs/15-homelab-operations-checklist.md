@@ -142,20 +142,52 @@ Then test reachability among cluster nodes.
 
 ## 2.2 Wazuh Core Services
 
-On `wazuh01`:
+`wazuh01` provides the lab's Wazuh manager, indexer, dashboard, and Filebeat
+services at `192.168.1.206`.
 
-```bash
-sudo systemctl is-active wazuh-indexer
-sudo systemctl is-active wazuh-manager
-sudo systemctl is-active filebeat
-sudo systemctl is-active wazuh-dashboard
-```
+The automated `mgmt01` health check validates:
 
-Expected result for each:
+- host resource pressure and SSH availability;
+- `wazuh-manager`;
+- `wazuh-indexer`;
+- `wazuh-dashboard`;
+- `filebeat`;
+- required Wazuh manager processes;
+- dashboard HTTPS response;
+- local indexer HTTPS response;
+- local Wazuh API HTTPS response.
 
-```text
-active
-```
+Run the detailed check with:
+
+    linux-health
+
+or directly through Ansible:
+
+    ansible-playbook ansible/linux-health.yml
+
+The Wazuh dashboard normally responds with an HTTP redirect, while the
+unauthenticated local indexer and API checks may return HTTP `401`. These
+responses are treated as healthy because they confirm that the application
+endpoint is listening and enforcing authentication.
+
+For a manual service check on `wazuh01`:
+
+    sudo systemctl is-active wazuh-indexer
+    sudo systemctl is-active wazuh-manager
+    sudo systemctl is-active filebeat
+    sudo systemctl is-active wazuh-dashboard
+
+Expected result for each is `active`.
+
+The manager's internal process state can also be inspected with:
+
+    sudo /var/ossec/bin/wazuh-control status
+
+Not every Wazuh process is required in this lab. Optional components such as
+cluster, mail, agentless, integration, or syslog processes may be stopped when
+those features are not configured. Health monitoring therefore verifies the
+required manager processes rather than relying only on the overall exit status
+of `wazuh-control status`.
 
 ### If a Service Is Inactive
 
