@@ -106,8 +106,11 @@ http_check "nms01"     "192.168.1.22"  80   "LibreNMS/80"
 ping_check "dc01"      "192.168.1.30"
 
 tcp_check  "docker"    "192.168.1.174" 3001 "Kuma/3001"
-tcp_check  "wazuh01"   "192.168.1.206" 443  "HTTPS/443"
-tcp_check  "storage01" "192.168.1.208" 445  "SMB/445"
+tcp_check  "wazuh01"   "192.168.1.206" 443   "HTTPS/443"
+tcp_check  "wazuh01"   "192.168.1.206" 1514  "Agent/1514"
+tcp_check  "wazuh01"   "192.168.1.206" 1515  "Enroll/1515"
+tcp_check  "wazuh01"   "192.168.1.206" 55000 "API/55000"
+tcp_check  "storage01" "192.168.1.208" 445   "SMB/445"
 
 printf "\n"
 
