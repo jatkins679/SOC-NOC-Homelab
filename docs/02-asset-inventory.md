@@ -119,7 +119,7 @@ selected workloads were migrated:
 |---|---|
 | `pve01` | `dc01`, `win11-01`, `docker`, `sqlserver2025`, `apache-guacamole`, `pialert` |
 | `pve02` | `kali01`, `target01` |
-| `pve03` | `nms01`, `wazuh01` |
+| `pve03` | `nms01`, `adsb01`, `wazuh01` |
 | `pve04` | `vulnscan01` |
 
 VM disks remain on each node's local storage. The shared `t-20-backup` CIFS
@@ -404,6 +404,7 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.208` | `storage01` |
 | `192.168.1.211` | `kali01` |
 | `192.168.1.238` | `target01` |
+| `192.168.1.246` | `adsb01` |
 | `192.168.1.247` | `vulnscan01` |
 | `192.168.1.254` | AT&T gateway |
 
@@ -466,6 +467,12 @@ Proxmox cluster: homelab
 ├── pve02
 ├── pve03
 └── pve04
+
+Flight tracking
+└── adsb01 (VM 103 on pve03)
+    ├── readsb / tar1090
+    ├── PiAware -> FlightAware
+    └── FR24feed -> Flightradar24
 
 Security / identity
 ├── wazuh01

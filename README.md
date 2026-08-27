@@ -42,6 +42,7 @@ Managed switching has entered the staging phase. The Cisco SG350-10 has been rec
 | `pve02` | Proxmox cluster node | `192.168.1.11` |
 | `pve03` | Proxmox cluster node | `192.168.1.12` |
 | `pve04` | Dell Precision 5550 Proxmox cluster node | `192.168.1.13` |
+| `adsb01` | Debian 13 ADS-B receiver VM on `pve03` | `192.168.1.246` |
 | `mgmt01` | Independent Linux management host | `192.168.1.5` |
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
 | `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
@@ -483,6 +484,22 @@ MITRE T1531 - Account Access Removal
 
 ---
 
+#### [22 - ADS-B Flight Tracking Receiver](docs/22-adsb-flight-tracking.md)
+
+Documents the migration of the ADS-B receiver from a Raspberry Pi to the
+`adsb01` Debian 13 VM on `pve03`.
+
+Topics include:
+
+- RTL2832U / R820T USB passthrough
+- `readsb` ADS-B decoding
+- PiAware / FlightAware feeding
+- FR24feed / Flightradar24 feeding
+- tar1090 local aircraft map
+- Service and reboot validation
+- Uptime Kuma monitoring
+- Raspberry Pi retirement / repurposing
+
 ## Hardware
 
 The lab is intentionally built from modest and repurposed hardware rather than enterprise server equipment.
@@ -494,7 +511,7 @@ Current systems include:
 - Lenovo laptop used as an independent management host
 - Dell PowerEdge T20 used for storage, media, and backup
 - Raspberry Pi used for DNS
-- Additional Raspberry Pi hardware
+- Additional Raspberry Pi hardware, including the former ADS-B receiver now available for repurposing
 - TRENDnet TEG-S160G unmanaged switch (`sw-home01`) for the existing home network
 - Cisco SG350-10 managed switch (`sw01`), received and staged for the homelab
 - GL.iNet hardware for network experimentation / backup connectivity
@@ -629,6 +646,7 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Standardize all nodes on Proxmox VE 9.2.10 and kernel 7.0.14-12-pve
 - [x] Verify four-node cluster quorum
 - [x] Rebalance `wazuh01` and `vulnscan01` across the expanded cluster
+- [x] Migrate ADS-B reception from Raspberry Pi to `adsb01` on `pve03` with FlightAware, Flightradar24, and tar1090
 - [x] Verify shared backup storage
 - [x] Recover and validate the `t-20-backup` CIFS target
 - [x] Rebuild and verify current backups for all ten guests
