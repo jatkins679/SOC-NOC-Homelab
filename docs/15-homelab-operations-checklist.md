@@ -34,6 +34,7 @@ validation.
 | `pve04` | Proxmox VE cluster node | `192.168.1.13` |
 | `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
+| `nms01` | LibreNMS network monitoring | `192.168.1.22` |
 | `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
@@ -201,6 +202,46 @@ A monitored endpoint that shows no recent events should be investigated even if
 its agent is technically still enrolled.
 
 ---
+
+## LibreNMS / NOC Monitoring
+
+`nms01` provides LibreNMS network monitoring at `192.168.1.22`.
+
+The automated `mgmt01` health checks validate:
+
+- host reachability and LibreNMS HTTP response;
+- SSH availability;
+- root-filesystem and memory pressure;
+- MariaDB;
+- nginx;
+- PHP-FPM;
+- SNMP daemon;
+- cron;
+- LibreNMS scheduler timer;
+- LibreNMS database connectivity;
+- active pollers;
+- Python poller-wrapper operation.
+
+A normal LibreNMS web check may return HTTP `302`; this is treated as healthy
+because the application redirects the initial request.
+
+The detailed Linux check can be run manually with:
+
+    linux-health
+
+or directly through Ansible:
+
+    ansible-playbook ansible/linux-health.yml
+
+LibreNMS application validation can be checked on `nms01` with:
+
+    cd /opt/librenms
+    sudo -u librenms ./validate.php
+
+The normal daily LibreNMS maintenance job is scheduled through
+`/etc/cron.d/librenms`. A host that is powered off at the scheduled time will
+miss that cron execution; traditional cron does not automatically replay the
+missed job after boot.
 
 ## 2.4 Pi-hole DNS
 
