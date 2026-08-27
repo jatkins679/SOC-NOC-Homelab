@@ -199,6 +199,120 @@
         success_msg: "LibreNMS database and polling validation passed"
       when: inventory_hostname == 'nms01'
 
+    - name: Check Wazuh core services
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      loop:
+        - wazuh-manager
+        - wazuh-indexer
+        - wazuh-dashboard
+        - filebeat
+      register: wazuh_services
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Verify Wazuh core services
+      ansible.builtin.assert:
+        that:
+          - "item.rc == 0"
+          - "item.stdout == 'active'"
+        fail_msg: "Wazuh service {{ item.item }} is not active"
+        success_msg: "Wazuh service {{ item.item }} is active"
+      loop: "{{ wazuh_services.results }}"
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Check Wazuh manager processes
+      ansible.builtin.command: /var/ossec/bin/wazuh-control status
+      register: wazuh_manager_status
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Verify Wazuh manager core processes
+      ansible.builtin.assert:
+        that:
+          - "'wazuh-remoted is running' in wazuh_manager_status.stdout"
+          - "'wazuh-analysisd is running' in wazuh_manager_status.stdout"
+          - "'wazuh-syscheckd is running' in wazuh_manager_status.stdout"
+          - "'wazuh-db is running' in wazuh_manager_status.stdout"
+          - "'wazuh-authd is running' in wazuh_manager_status.stdout"
+          - "'wazuh-apid is running' in wazuh_manager_status.stdout"
+        fail_msg: "One or more required Wazuh manager processes are not running"
+        success_msg: "Wazuh manager core processes are running"
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Check Wazuh dashboard HTTPS
+      ansible.builtin.command:
+        argv:
+          - curl
+          - -k
+          - -sS
+          - -o
+          - /dev/null
+          - -w
+          - "%{http_code}"
+          - https://127.0.0.1/
+      register: wazuh_dashboard_http
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Verify Wazuh dashboard HTTPS
+      ansible.builtin.assert:
+        that:
+          - "wazuh_dashboard_http.stdout in ['200', '301', '302', '303', '307', '308']"
+        fail_msg: "Wazuh dashboard HTTP check failed: {{ wazuh_dashboard_http.stdout }}"
+        success_msg: "Wazuh dashboard responding: HTTPS {{ wazuh_dashboard_http.stdout }}"
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Check Wazuh indexer HTTPS
+      ansible.builtin.command:
+        argv:
+          - curl
+          - -k
+          - -sS
+          - -o
+          - /dev/null
+          - -w
+          - "%{http_code}"
+          - https://127.0.0.1:9200/
+      register: wazuh_indexer_http
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Verify Wazuh indexer HTTPS
+      ansible.builtin.assert:
+        that:
+          - "wazuh_indexer_http.stdout in ['200', '401', '403']"
+        fail_msg: "Wazuh indexer HTTP check failed: {{ wazuh_indexer_http.stdout }}"
+        success_msg: "Wazuh indexer responding: HTTPS {{ wazuh_indexer_http.stdout }}"
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Check Wazuh API HTTPS
+      ansible.builtin.command:
+        argv:
+          - curl
+          - -k
+          - -sS
+          - -o
+          - /dev/null
+          - -w
+          - "%{http_code}"
+          - https://127.0.0.1:55000/
+      register: wazuh_api_http
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'wazuh01'
+
+    - name: Verify Wazuh API HTTPS
+      ansible.builtin.assert:
+        that:
+          - "wazuh_api_http.stdout in ['200', '401', '403']"
+        fail_msg: "Wazuh API HTTP check failed: {{ wazuh_api_http.stdout }}"
+        success_msg: "Wazuh API responding: HTTPS {{ wazuh_api_http.stdout }}"
+      when: inventory_hostname == 'wazuh01'
+
     - name: Display Linux host summary
       ansible.builtin.debug:
         msg:
