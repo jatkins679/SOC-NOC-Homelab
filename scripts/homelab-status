@@ -26,15 +26,24 @@ echo "=== Proxmox Cluster Health ==="
 proxmox_rc=$?
 
 echo
+echo "=== Linux Infrastructure Health ==="
+"$REPO/scripts/linux-health" --brief
+linux_rc=$?
+
+echo
 echo "============================================================"
 
-if [ "$network_rc" -eq 0 ] && [ "$proxmox_rc" -eq 0 ]; then
+if [ "$network_rc" -eq 0 ] &&
+   [ "$proxmox_rc" -eq 0 ] &&
+   [ "$linux_rc" -eq 0 ]; then
+
     echo "OVERALL STATUS: HEALTHY"
     rc=0
 else
     echo "OVERALL STATUS: ATTENTION REQUIRED"
-    echo "Network/service check exit code: $network_rc"
-    echo "Proxmox check exit code:        $proxmox_rc"
+    echo "Network/service check: $network_rc"
+    echo "Proxmox check:        $proxmox_rc"
+    echo "Linux check:          $linux_rc"
     rc=1
 fi
 

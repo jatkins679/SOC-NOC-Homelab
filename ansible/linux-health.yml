@@ -1,0 +1,125 @@
+---
+- name: Linux infrastructure health check
+  hosts: linux
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check hostname
+      ansible.builtin.command: hostname
+      register: hostname_result
+      changed_when: false
+
+    - name: Check uptime
+      ansible.builtin.command: uptime -p
+      register: uptime_result
+      changed_when: false
+
+    - name: Read root filesystem usage
+      ansible.builtin.shell: |
+        df -P / | awk 'NR==2 {gsub(/%/, "", $5); print $5}'
+      register: root_fs_pct
+      changed_when: false
+
+    - name: Read memory usage
+      ansible.builtin.shell: |
+        awk '
+        /MemTotal:/ { total=$2 }
+        /MemAvailable:/ { avail=$2 }
+        END { printf "%.0f\n", ((total-avail)/total)*100 }
+        ' /proc/meminfo
+      register: memory_used_pct
+      changed_when: false
+
+    - name: Verify basic resource pressure
+      ansible.builtin.assert:
+        that:
+          - "root_fs_pct.stdout | int < 90"
+          - "memory_used_pct.stdout | int < 95"
+        fail_msg: >-
+          Resource pressure detected on {{ inventory_hostname }}:
+          root={{ root_fs_pct.stdout }}%,
+          memory={{ memory_used_pct.stdout }}%
+        success_msg: >-
+          Resource pressure normal on {{ inventory_hostname }}:
+          root={{ root_fs_pct.stdout }}%,
+          memory={{ memory_used_pct.stdout }}%
+
+    - name: Check SSH service
+      ansible.builtin.command: systemctl is-active ssh
+      register: ssh_status
+      changed_when: false
+      failed_when: false
+
+    - name: Verify SSH is active
+      ansible.builtin.assert:
+        that:
+          - "ssh_status.stdout == 'active'"
+        fail_msg: "SSH is not active on {{ inventory_hostname }}"
+        success_msg: "SSH is active on {{ inventory_hostname }}"
+
+    - name: Check Pi-hole FTL
+      ansible.builtin.command: systemctl is-active pihole-FTL
+      register: pihole_status
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'dns01'
+
+    - name: Verify Pi-hole FTL is active
+      ansible.builtin.assert:
+        that:
+          - "pihole_status.stdout == 'active'"
+        fail_msg: "Pi-hole FTL is not active on dns01"
+        success_msg: "Pi-hole FTL is active on dns01"
+      when: inventory_hostname == 'dns01'
+
+    - name: Check Docker Engine
+      ansible.builtin.command: systemctl is-active docker
+      register: docker_status
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'docker'
+
+    - name: Verify Docker Engine is active
+      ansible.builtin.assert:
+        that:
+          - "docker_status.stdout == 'active'"
+        fail_msg: "Docker Engine is not active on docker"
+        success_msg: "Docker Engine is active on docker"
+      when: inventory_hostname == 'docker'
+
+    - name: Inspect uptime-kuma container
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - uptime-kuma
+      register: kuma_inspect_raw
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname == 'docker'
+
+    - name: Parse uptime-kuma container state
+      ansible.builtin.set_fact:
+        kuma_inspect: "{{ (kuma_inspect_raw.stdout | from_json)[0] }}"
+      when:
+        - inventory_hostname == 'docker'
+        - kuma_inspect_raw.rc == 0
+
+    - name: Verify uptime-kuma is running and healthy
+      ansible.builtin.assert:
+        that:
+          - "kuma_inspect_raw.rc == 0"
+          - "kuma_inspect.State.Status == 'running'"
+          - "kuma_inspect.State.Health.Status == 'healthy'"
+        fail_msg: "uptime-kuma is missing, stopped, or unhealthy"
+        success_msg: "uptime-kuma is running and healthy"
+      when: inventory_hostname == 'docker'
+
+    - name: Display Linux host summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ hostname_result.stdout }}"
+          - "Uptime: {{ uptime_result.stdout }}"
+          - "Root filesystem: {{ root_fs_pct.stdout }}% used"
+          - "Memory: {{ memory_used_pct.stdout }}% used"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+set -u
+
+REPO="$HOME/SOC-NOC-Homelab"
+INVENTORY="$REPO/ansible/inventory.ini"
+PLAYBOOK="$REPO/ansible/linux-health.yml"
+
+cd "$REPO" || exit 1
+
+if [ "${1:-}" = "--brief" ]; then
+    set -o pipefail
+
+    ansible-playbook \
+        -i "$INVENTORY" \
+        "$PLAYBOOK" 2>&1 |
+    awk '
+        /"msg": "/ {
+            line=$0
+            sub(/^.*"msg": "/, "", line)
+            sub(/"[,]?$/, "", line)
+            print "  " line
+        }
+
+        /^PLAY RECAP/ {
+            print ""
+            print
+            recap=1
+            next
+        }
+
+        recap && /^(dns01|docker)[[:space:]]/ {
+            print
+        }
+    '
+
+    exit "${PIPESTATUS[0]}"
+fi
+
+exec ansible-playbook \
+    -i "$INVENTORY" \
+    "$PLAYBOOK"
