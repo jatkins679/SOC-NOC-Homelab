@@ -784,6 +784,12 @@ Remove temporary test if no longer needed
 Backup creation without restore testing is incomplete disaster-recovery
 validation.
 
+A complete example of this procedure is documented in
+[`21-proxmox-backup-restore-validation.md`](21-proxmox-backup-restore-validation.md).
+The August 26, 2026 exercise restored VM 210 to temporary VMID 910 with an
+isolated NIC, verified the guest and Uptime Kuma service, and then removed the
+temporary restore.
+
 ---
 
 ## 4.4 Asset Inventory Review

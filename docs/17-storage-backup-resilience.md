@@ -324,6 +324,15 @@ power interruption.
 - Backup verification should account for every expected VM/LXC ID.
 - Hypervisor-capacity warnings can reveal separate guest-filesystem risks.
 
+On August 26, 2026, recoverability was tested directly by restoring Docker VM
+210 from `t-20-backup` to temporary VMID 910. The restored VM was assigned a
+unique MAC address, prevented from automatically starting, and booted with its
+virtual NIC in a link-down state. Debian, the QEMU Guest Agent, Docker, and the
+Uptime Kuma container were successfully validated, including an HTTP response
+from the restored service. The temporary VM and disks were then removed. See
+[`21-proxmox-backup-restore-validation.md`](21-proxmox-backup-restore-validation.md)
+for the complete procedure.
+
 ---
 
 # 9. Skills Demonstrated

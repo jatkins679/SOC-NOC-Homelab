@@ -194,6 +194,14 @@ Topics include:
 - Restore-oriented validation
 - Host configuration backup
 
+Related hands-on recovery validation:
+
+#### [21 - Proxmox Backup and Restore Validation](docs/21-proxmox-backup-restore-validation.md)
+
+Documents the August 26, 2026 isolated restore test of Docker VM 210, including
+temporary restore to VMID 910, network isolation, QEMU Guest Agent validation,
+Docker/Uptime Kuma service verification, and cleanup of the temporary guest.
+
 ---
 
 #### [02 - Pi-hole Migration](docs/02-pihole-migration.md)
