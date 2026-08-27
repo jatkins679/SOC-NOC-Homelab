@@ -63,6 +63,15 @@ dns_check() {
     fi
 }
 
+system_dns_check() {
+    if timeout 5 getent ahostsv4 example.com >/dev/null 2>&1; then
+        printf "%-12s %-15s %-14s %s\n" "mgmt01" "192.168.1.5" "System DNS" "OK"
+    else
+        printf "%-12s %-15s %-14s %s\n" "mgmt01" "192.168.1.5" "System DNS" "RESOLUTION FAIL"
+        failed=1
+    fi
+}
+
 http_check() {
     name="$1"
     ip="$2"
@@ -99,6 +108,7 @@ tcp_check  "pve03"     "192.168.1.12"  8006 "PVE/8006"
 tcp_check  "pve04"     "192.168.1.13"  8006 "PVE/8006"
 
 dns_check
+system_dns_check
 
 tcp_check  "sw01"      "192.168.1.21"  22   "SSH/22"
 http_check "nms01"     "192.168.1.22"  80   "LibreNMS/80"
