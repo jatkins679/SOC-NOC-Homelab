@@ -42,6 +42,7 @@ system is not presented as though it is already deployed.
 |---|---|---:|---|---|
 | AT&T gateway | AT&T residential fiber gateway | `192.168.1.254` | Default gateway / Internet edge | Supporting infrastructure |
 | `dns01` | Raspberry Pi 3 Model B+ | `192.168.1.20` | Pi-hole DNS / ad blocking | **Operational** |
+| `tailscale01` | Raspberry Pi | `192.168.1.236` | Dedicated Tailscale subnet router; advertises `192.168.1.0/24`; Tailscale IP `100.90.238.71` | **Operational** |
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent management host; SSH/Ansible administration, health monitoring, and operational tooling | **Operational** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
@@ -403,6 +404,7 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.206` | `wazuh01` |
 | `192.168.1.208` | `storage01` |
 | `192.168.1.211` | `kali01` |
+| `192.168.1.236` | `tailscale01` |
 | `192.168.1.238` | `target01` |
 | `192.168.1.246` | `adsb01` |
 | `192.168.1.247` | `vulnscan01` |
@@ -455,6 +457,7 @@ Physical / infrastructure
 ├── AT&T gateway
 ├── mgmt01
 ├── dns01
+├── tailscale01
 ├── storage01
 ├── sw01 (staged)
 ├── pve01

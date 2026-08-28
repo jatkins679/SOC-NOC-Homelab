@@ -12,6 +12,10 @@ flowchart TB
     SW --> PVE4["pve04 - Precision 5550\n192.168.1.13"]
     SW --> MGMT["mgmt01 - Management Host\n192.168.1.5"]
     SW --> DNS["dns01 - Pi-hole\n192.168.1.20"]
+
+    SW --> TAILSCALE["tailscale01 - Tailscale Subnet Router\n192.168.1.236\nTS 100.90.238.71"]
+
+    REMOTE["Remote Tailscale Clients"] -. "encrypted Tailscale tunnel" .-> TAILSCALE
     SW --> STORAGE["storage01 - SMB Backup Storage\n192.168.1.208"]
 
     MGMT -. "SSH / Ansible / health checks" .-> PVE1
@@ -43,6 +47,8 @@ flowchart TB
 - `pve04` is a Dell Precision 5550 using a Realtek USB Gigabit Ethernet adapter.
 - `mgmt01` remains independent of the cluster and provides SSH/Ansible administration, service-health validation, and scheduled operational monitoring.
 - `dns01` provides Pi-hole DNS at `192.168.1.20`.
+
+- `tailscale01` is a dedicated Raspberry Pi Tailscale subnet router at `192.168.1.236` with Tailscale address `100.90.238.71`; it advertises remote access to the `192.168.1.0/24` homelab subnet.
 - `storage01` provides shared `t-20-backup` CIFS storage.
 - `nms01` and `wazuh01` run on `pve03`; `vulnscan01` runs on `pve04`.
 - VM disks remain local to each node; backups provide recovery protection.
@@ -58,6 +64,7 @@ flowchart TB
 | `target01` | Linux, Apache, Auditd, and FIM telemetry | `wazuh01` |
 | `kali01` | Controlled test activity | Lab-owned target systems |
 | `vulnscan01` | Authorized vulnerability scanning | Lab-owned systems |
+| Remote Tailscale clients | Encrypted remote subnet access via `tailscale01` | `192.168.1.0/24` homelab LAN |
 
 The `corp.home.arpa` Active Directory domain is operational. `dc01` provides AD
 DS and AD-integrated DNS, and `win11-01` is domain joined with its secure channel
