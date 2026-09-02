@@ -378,8 +378,10 @@ architecture.
 | `pve02` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `pve03` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
 | `pve04` | Additional monitoring possible | N/A | N/A | Linux/Proxmox logs | Planned |
-| `dns01` | Additional monitoring possible | N/A | N/A | Pi-hole/Linux logs | Planned |
-| `storage01` | Not currently enrolled | Not verified | Available locally; not currently forwarded | Windows/service logs | Planned |
+| `nms01` | N/A | N/A | N/A | LibreNMS application / Linux logs | **Operational NOC monitoring platform** |
+| `sw01` | N/A | N/A | N/A | Network-device telemetry | **LibreNMS via SNMP operational** |
+| `dns01` | Additional monitoring possible | N/A | N/A | Pi-hole/Linux logs | Uptime Kuma service monitoring operational |
+| `storage01` | Not currently enrolled | Not verified | Available locally; not currently forwarded | Windows/service logs | Uptime Kuma SMB/TCP monitoring operational |
 
 This table is intentionally conservative: a system is only marked as monitored
 where that monitoring has already been exercised or documented.

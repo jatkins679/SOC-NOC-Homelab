@@ -132,7 +132,7 @@ the dedicated Zabbix/SNMP phase is not yet complete.
 | Asset management | **Demonstrated** | Current-state asset, IP, role and monitoring inventory | Operational/planned distinction maintained | [`02-asset-inventory.md`](02-asset-inventory.md) |
 | Network monitoring with Zabbix | **Planned** | Dedicated NOC monitoring server and agents | Not yet claimed as operational | `07-zabbix-monitoring.md` |
 | Cisco managed-switch baseline / CLI | **Demonstrated** | Bench-configured Cisco SG350-10 as `sw01`; assigned management address, validated firmware and VLAN state, and exported a baseline configuration | `show version`, `show vlan`, configuration backup, staging record | [`04-network-vlans.md`](04-network-vlans.md) |
-| SNMP monitoring | **Planned** | Cisco switch and infrastructure telemetry | Not yet claimed as operational | Future network-monitoring phase |
+| **SNMP** monitoring | **Operational / expanding** | Cisco switch and infrastructure telemetry | `sw01` successfully monitored by LibreNMS via SNMP; broader SNMPv3 rollout remains future work | LibreNMS / network-monitoring phase |
 | Managed-switch production operation | **In progress / planned** | Move homelab links to `sw01`, validate port/link state, then operate it as the lab switching platform | Physical deployment and post-move validation still pending | [`04-network-vlans.md`](04-network-vlans.md) |
 | VLAN segmentation | **Planned** | Management/server/user/SOC/attack networks | Not yet claimed as operational | `04-network-vlans.md` |
 | OPNsense firewalling / routing | **Planned** | Inter-VLAN routing, firewall policy, NAT and telemetry | Not yet claimed as operational | `05-opnsense.md` |

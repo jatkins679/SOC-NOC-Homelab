@@ -46,6 +46,7 @@ Managed switching has entered the staging phase. The Cisco SG350-10 has been rec
 | `mgmt01` | Independent Linux management host | `192.168.1.5` |
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
 | `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
+| `tailscale01` | Dedicated Tailscale subnet router / remote-access gateway | `192.168.1.236` |
 | `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
 | `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
 | `kali01` | Security-testing system | `192.168.1.211` |
@@ -88,6 +89,10 @@ supporting, historical, and planned assets so future-state systems are not
 presented as already deployed.
 
 ---
+
+#### [Tailscale Remote Access](docs/23-tailscale-remote-access.md)
+
+Documents the dedicated `tailscale01` subnet router, advertised `192.168.1.0/24` route, remote-access path, validation, and separation between Tailscale remote access and commercial VPN use.
 
 #### [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md)
 
