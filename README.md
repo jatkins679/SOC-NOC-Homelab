@@ -30,7 +30,7 @@ The lab currently includes:
 - Controlled SOC detection exercises
 - Shared Proxmox backup storage
 
-Managed switching has entered the staging phase. The Cisco SG350-10 has been received, configured as `sw01`, assigned the fixed management address `192.168.1.21/24`, checked at the CLI, and backed up before deployment. The current flat lab network still operates on `192.168.1.0/24`; VLAN segmentation, OPNsense, cellular backup Internet, and additional monitoring remain planned work.
+Managed switching is now in the physical deployment phase. The Cisco SG350-10 is operational as `sw01` at `192.168.1.21/24`, with the Proxmox nodes' secondary Ethernet paths connected to Gi1-Gi4. Existing `vmbr0` management traffic remains on the TRENDnet unmanaged switch and the flat `192.168.1.0/24` network. VLAN segmentation and OPNsense routing are not yet operational; they remain the next network-engineering phase.
 
 ---
 
@@ -518,7 +518,7 @@ Current systems include:
 - Raspberry Pi used for DNS
 - Additional Raspberry Pi hardware, including the former ADS-B receiver now available for repurposing
 - TRENDnet TEG-S160G unmanaged switch (`sw-home01`) for the existing home network
-- Cisco SG350-10 managed switch (`sw01`), received and staged for the homelab
+- Cisco SG350-10 managed switch (`sw01`), operational as the managed homelab switching platform
 - GL.iNet hardware for network experimentation / backup connectivity
 
 `sw01` is not presented as the household switch replacement. The current home
@@ -613,9 +613,10 @@ It currently provides telemetry from:
 
 ## Managed Switching and Planned Network Design
 
-The managed-switch staging phase is underway. `sw01` has been received, given a
-unique management address, validated at the CLI, and backed up. The next major
-network phase is the physical homelab connection and then segmentation.
+The managed-switch deployment phase is underway. `sw01` is operational at
+`192.168.1.21/24`, with the Proxmox secondary Ethernet paths connected to Gi1-Gi4.
+The existing `vmbr0` management path remains on the TRENDnet switch. The next
+major network phase is VLAN-aware configuration, segmentation, and OPNsense routing.
 
 The planned design includes separate logical areas for:
 

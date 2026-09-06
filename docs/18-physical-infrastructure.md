@@ -17,9 +17,8 @@ The primary shelving unit provides approximately:
 
 ```text
 Shelf depth:              18 inches
-Vertical clearance:       ~15 inches between shelves
-Top-shelf clearance:      up to ~24 inches
-Usable shelf width:       ~30 linear inches per level
+Vertical clearance:       ~17 inches between shelves
+Shelf width:              48 inches
 ```
 
 The AT&T fiber/power source is on the wall to the left of the window, which
@@ -27,32 +26,34 @@ influences upstream cable and power routing.
 
 ---
 
-# 2. Equipment Zones
+# 2. Shelf Layout
 
-The rebuild uses functional zones rather than placing devices wherever space is
-available:
+The final three-shelf arrangement groups equipment by function so devices, cabling,
+and power relationships remain easy to trace:
 
 ```text
-NETWORK
-COMPUTE
-STORAGE
-POWER / CABLE MANAGEMENT
+TOP SHELF - NETWORK / COMPUTE
+MIDDLE SHELF - STORAGE / WAN
+BOTTOM SHELF - POWER
 ```
 
 The important operational principle is that related equipment can be identified,
 reached, powered, disconnected, and reconnected without moving unrelated
 systems.
 
-## Network Zone
+## Top Shelf - Network and Compute
 
-Examples:
+The 48-inch top shelf contains:
 
+- `pve01`, `pve02`, and `pve03` mini-PC Proxmox nodes;
+- `pve04` Dell Precision 5550 Proxmox node;
+- `mgmt01` independent management laptop;
 - `sw01` Cisco SG350-10;
 - `sw-home01` TRENDnet home-network switch where physically appropriate;
-- `dns01`;
+- three Raspberry Pi systems, including `dns01` and `tailscale01`;
 - other small network/support devices.
 
-## Compute Zone
+### Proxmox Node Grouping
 
 Keep the Proxmox nodes visibly grouped and individually labeled:
 
@@ -63,14 +64,15 @@ pve03
 pve04
 ```
 
-## Storage Zone
+## Middle Shelf - Storage and WAN Equipment
+The middle shelf contains the AT&T fiber gateway, `storage01`, the Drobo array, and the other external storage attached to `storage01`.
 
 Keep `storage01` and its attached storage together so power, USB, and Ethernet
 relationships are visually obvious.
 
 ---
 
-# 3. Power Separation
+# 3. Bottom Shelf - Power
 
 The power design separates lightweight network infrastructure from heavier
 compute/storage loads.

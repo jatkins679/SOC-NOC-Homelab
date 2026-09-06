@@ -35,7 +35,7 @@ validation.
 | `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 | `nms01` | LibreNMS network monitoring | `192.168.1.22` |
-| `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
+| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
 | `wazuh01` | Wazuh SIEM | `192.168.1.206` |

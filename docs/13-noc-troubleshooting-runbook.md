@@ -113,7 +113,7 @@ Examples:
 | `pve03` | Proxmox cluster node | `192.168.1.12` |
 | `pve04` | Proxmox cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
-| `sw01` | Cisco SG350-10 managed switch (staged) | `192.168.1.21` |
+| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
 | `dc01` | Active Directory / DNS | `192.168.1.30` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
 | `wazuh01` | Wazuh SIEM | `192.168.1.206` |
@@ -1018,13 +1018,13 @@ does not prove successful web authentication or correct application behavior.
 
 # 19. Cisco Managed Switch / Link Troubleshooting
 
-This section applies to the Cisco SG350-10 staged as `sw01`. Until the physical
-homelab migration is complete, distinguish **switch staging problems** from
-problems on the current live TRENDnet path.
+This section applies to the Cisco SG350-10 deployed as `sw01`. The Proxmox
+secondary Ethernet paths now connect to `sw01`; distinguish managed-switch problems from
+problems on the existing TRENDnet `vmbr0` management path.
 
 ## Baseline State
 
-Verified staging details:
+Verified switch baseline:
 
 ```text
 Hostname:             sw01

@@ -89,7 +89,6 @@ onboot: 1
 scsi0: local-lvm:vm-210-disk-1,discard=on,size=10G,ssd=1
 ```
 
-The DHCP configuration and existing MAC address made network isolation particularly important.
 
 ---
 

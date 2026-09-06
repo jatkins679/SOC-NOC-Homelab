@@ -46,7 +46,7 @@ system is not presented as though it is already deployed.
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent management host; SSH/Ansible administration, health monitoring, and operational tooling | **Operational** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
-| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; future VLANs, SNMP, syslog, and SPAN | **Staged** |
+| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; Proxmox secondary Ethernet paths on Gi1-Gi4; VLAN segmentation pending | **Operational** |
 | `cellular-wan01` | GL.iNet GL-A1300 travel router + compatible USB LTE modem/SIM | Planned | Backup Internet connectivity and WAN-failover testing | **Planned** |
 | `fw01` | OPNsense virtual firewall | Planned | Lab routing, firewalling, inter-VLAN policy | **Planned** |
 | `zabbix01` | Linux VM | Planned | NOC monitoring / availability / SNMP | **Planned** |
@@ -400,7 +400,7 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.12` | `pve03` |
 | `192.168.1.13` | `pve04` |
 | `192.168.1.20` | `dns01` |
-| `192.168.1.21` | `sw01` (staged management address) |
+| `192.168.1.21` | `sw01` (managed-switch address) |
 | `192.168.1.30` | `dc01` |
 | `192.168.1.151` | `apache-guacamole` |
 | `192.168.1.206` | `wazuh01` |
@@ -461,7 +461,7 @@ Physical / infrastructure
 ├── dns01
 ├── tailscale01
 ├── storage01
-├── sw01 (staged)
+├── sw01 (operational managed switch)
 ├── pve01
 ├── pve02
 ├── pve03

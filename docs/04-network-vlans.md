@@ -8,7 +8,7 @@ It intentionally separates three different states:
 
 1. **Completed switch staging** — the Cisco SG350-10 has been received, identified,
    given a unique management address, checked from the CLI, and backed up.
-2. **Physical homelab deployment** — moving lab Ethernet connections to `sw01`
+2. **Physical homelab deployment in progress** — connecting Proxmox secondary Ethernet paths to `sw01`
    while preserving the TRENDnet switch for the existing home network.
 3. **Future segmentation** — VLANs, trunks, OPNsense routing, SNMP, syslog, and
    SPAN are documented as planned until they are implemented and validated.
@@ -38,6 +38,8 @@ TRENDnet TEG-S160G
 The Cisco switch is the managed **homelab** switch. It is not intended to replace
 `sw-home01` as the general household switch.
 
+The Proxmox hosts now use a dual-path design: `vmbr0` remains the existing management path through `sw-home01` on `192.168.1.0/24`, while the secondary Ethernet path connects to `sw01` through `vmbr1` where configured. Physical connectivity to `sw01` does not mean VLAN segmentation is complete.
+
 ---
 
 # 2. Cisco SG350-10 Baseline
@@ -51,7 +53,7 @@ The Cisco switch is the managed **homelab** switch. It is not intended to replac
 | Inactive firmware image | `2.5.0.83` |
 | Configuration backup | Baseline startup configuration downloaded |
 | VLAN state | Default VLAN 1; segmentation not yet implemented |
-| Deployment state | Staged; physical homelab migration pending |
+| Deployment state | Physically deployed for Proxmox secondary links; VLAN segmentation pending |
 
 The fixed management address was assigned before the switch was introduced into
 the live LAN so that it would not conflict with another device.
@@ -78,8 +80,8 @@ Version: 2.5.0.83
 Date: 18-Jun-2019
 ```
 
-This establishes a configuration/firmware baseline before the switch begins
-carrying homelab traffic.
+This records the configuration/firmware baseline established before deployment. The switch now carries the Proxmox secondary Ethernet links.
+VLAN segmentation remains pending.
 
 ---
 
@@ -111,16 +113,18 @@ The currently accepted initial convention is:
 
 | Switch port | Intended connection | State |
 |---|---|---|
-| `Gi1` | `pve01` | Planned physical connection |
-| `Gi2` | `pve02` | Planned physical connection |
-| `Gi3` | `pve03` | Planned physical connection |
-| `Gi4` | `pve04` | Planned physical connection |
+| `Gi1` | `pve01` | Connected secondary Ethernet path |
+| `Gi2` | `pve02` | Connected secondary Ethernet path |
+| `Gi3` | `pve03` | Connected secondary Ethernet path |
+| `Gi4` | `pve04` | Connected secondary Ethernet path |
 | `Gi8` | Upstream / BGW320 | Planned physical connection |
 | Other ports | `storage01`, `mgmt01`, `dns01`, future devices | Record during rebuild |
 
 The cable labels deliberately keep the switch-port field visible so the final
 port assignment can be recorded at the time of connection rather than recalled
 later from memory.
+
+During deployment, the secondary Ethernet paths on `pve01` and `pve02` were verified at 1 Gbps/full duplex. An apparent `pve02` secondary-NIC failure was traced to an incompletely seated power connection. After correcting the power connection and rebooting, the built-in `nic1` negotiated normally; the USB Ethernet adapter used during troubleshooting is therefore not required for the planned Cisco path.
 
 ---
 
@@ -129,13 +133,13 @@ later from memory.
 Before VLAN work begins, the first deployment objective is deliberately simple:
 
 ```text
-Move homelab Ethernet links to sw01
+Connect Proxmox secondary Ethernet links to sw01
         ↓
-Remain on the existing flat/default VLAN
+Preserve existing vmbr0 management paths on sw-home01
         ↓
-Verify management reachability and services
+Verify physical links, management reachability, and cluster health
         ↓
-Only then begin segmentation work
+Only then configure VLAN-aware paths and begin segmentation work
 ```
 
 This reduces the number of variables changed at one time.
