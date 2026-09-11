@@ -161,12 +161,13 @@ Monitoring and application validation
 
 Power the required switch infrastructure first.
 
-For the Cisco deployment phase:
+For the current Cisco/OPNsense deployment:
 
 - confirm `sw01` powers normally;
 - confirm expected link lights;
 - confirm management reachability at `192.168.1.21` when the management path is available;
-- keep the switch on the known flat/default VLAN state for the first physical validation.
+- verify Gi1-Gi4 trunks, Gi8 upstream, and the configured VLAN membership;
+- start and validate `fw01` before expecting routed VLAN guests to be reachable.
 
 ## Step 2 — Start DNS and Storage Dependencies
 
@@ -262,7 +263,7 @@ Validate at least:
 ## DNS / Identity
 
 - [ ] `dns01` answers expected DNS queries.
-- [ ] `dc01` reachable at `192.168.1.30`.
+- [ ] `dc01` reachable at `10.10.20.10`.
 - [ ] `corp.home.arpa` resolution works.
 - [ ] `win11-01` retains domain connectivity.
 

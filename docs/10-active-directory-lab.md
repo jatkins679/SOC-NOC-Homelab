@@ -31,10 +31,10 @@ The goals of this phase were to:
 
 | System | Role | Address / Name |
 |---|---|---|
-| `dc01` | Active Directory Domain Controller / DNS | `192.168.1.30` |
+| `dc01` | Active Directory Domain Controller / DNS | `10.10.20.10` |
 | `dc01.corp.home.arpa` | Domain controller FQDN | `corp.home.arpa` |
 | `win11-01` | Domain-joined Windows 11 workstation | DHCP / lab LAN |
-| `wazuh01` | Wazuh SIEM | `192.168.1.206` |
+| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
 | `CORP` | NetBIOS domain name | `corp.home.arpa` |
 
 The Active Directory DNS domain is:
@@ -59,7 +59,7 @@ CORP
                +---------------+---------------+
                |                               |
             dc01                           wazuh01
-        192.168.1.30                    192.168.1.206
+        10.10.20.10                    10.10.40.20
       Active Directory                    Wazuh
       DNS / Kerberos                       SIEM
                |
@@ -153,13 +153,13 @@ Active Directory name resolution and service discovery.
 The domain controller uses:
 
 ```text
-192.168.1.30
+10.10.20.10
 ```
 
 The Windows 11 domain workstation was configured to use:
 
 ```text
-192.168.1.30
+10.10.20.10
 ```
 
 as its DNS server.

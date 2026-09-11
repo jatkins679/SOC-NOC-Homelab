@@ -28,9 +28,9 @@ All activity was generated against systems in my own homelab.
 
 | System | Role | IP Address |
 |---|---|---|
-| wazuh01 | Wazuh SIEM server | 192.168.1.206 |
-| target01 | Ubuntu monitored endpoint | 192.168.1.238 |
-| kali01 | Security testing system | 192.168.1.211 |
+| wazuh01 | Wazuh SIEM server | 10.10.40.20 |
+| target01 | Ubuntu monitored endpoint | 10.10.60.10 |
+| kali01 | Security testing system | 10.10.50.113 |
 
 `target01` is enrolled in Wazuh as agent `001`.
 
@@ -59,13 +59,13 @@ Eight controlled failed authentication attempts were generated in rapid successi
 The original SSH activity was independently verified on `target01` using:
 
 ```bash
-sudo journalctl -u ssh --no-pager | grep '192.168.1.211'
+sudo journalctl -u ssh --no-pager | grep '10.10.50.113'
 ```
 
 Failed authentication events included:
 
 ```text
-Failed password for invalid user baduser from 192.168.1.211
+Failed password for invalid user baduser from 10.10.50.113
 ```
 
 The controlled test generated eight failures in the correlation window.
@@ -87,8 +87,8 @@ The alert identified:
 
 ```text
 Agent:         target01
-Target IP:     192.168.1.238
-Source IP:     192.168.1.211
+Target IP:     10.10.60.10
+Source IP:     10.10.50.113
 Source user:   baduser
 Frequency:     8
 Decoder:       sshd
@@ -253,7 +253,7 @@ The agent was restarted after the configuration change.
 From `kali01`, a controlled HTTP request containing SQL-like syntax was sent to Apache on `target01`:
 
 ```bash
-curl -XGET "http://192.168.1.238/users/?id=SELECT+*+FROM+users"
+curl -XGET "http://10.10.60.10/users/?id=SELECT+*+FROM+users"
 ```
 
 The request did not require a vulnerable web application. The objective was to generate an access-log entry containing suspicious SQL injection syntax.
@@ -286,7 +286,7 @@ The alert included:
 
 ```text
 Agent:         target01
-Source IP:     192.168.1.211
+Source IP:     10.10.50.113
 Protocol:      GET
 HTTP status:   404
 ```

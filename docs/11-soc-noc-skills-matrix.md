@@ -133,9 +133,9 @@ the dedicated Zabbix/SNMP phase is not yet complete.
 | Network monitoring with Zabbix | **Planned** | Dedicated NOC monitoring server and agents | Not yet claimed as operational | `07-zabbix-monitoring.md` |
 | Cisco managed-switch baseline / CLI | **Demonstrated** | Bench-configured Cisco SG350-10 as `sw01`; assigned management address, validated firmware and VLAN state, and exported a baseline configuration | `show version`, `show vlan`, configuration backup, staging record | [`04-network-vlans.md`](04-network-vlans.md) |
 | **SNMP** monitoring | **Operational / expanding** | Cisco switch and infrastructure telemetry | `sw01` successfully monitored by LibreNMS via SNMP; broader SNMPv3 rollout remains future work | LibreNMS / network-monitoring phase |
-| Managed-switch production operation | **In progress / planned** | Move homelab links to `sw01`, validate port/link state, then operate it as the lab switching platform | Physical deployment and post-move validation still pending | [`04-network-vlans.md`](04-network-vlans.md) |
-| VLAN segmentation | **Planned** | Management/server/user/SOC/attack networks | Not yet claimed as operational | `04-network-vlans.md` |
-| OPNsense firewalling / routing | **Planned** | Inter-VLAN routing, firewall policy, NAT and telemetry | Not yet claimed as operational | `05-opnsense.md` |
+| Managed-switch production operation | **Demonstrated** | Operate `sw01` trunks/uplink and inspect RSTP, counters, LLDP, and MAC state | Live Gi1-Gi4 guest trunks and Gi8 upstream validated | [`04-network-vlans.md`](04-network-vlans.md) |
+| VLAN segmentation | **Demonstrated / remediation active** | Management/server/user/SOC/attack/DMZ networks | VLANs 20-60 carry migrated guests; dependency cleanup tracked in issue #1 | [`04-network-vlans.md`](04-network-vlans.md) |
+| OPNsense firewalling / routing | **Demonstrated / remediation active** | Inter-VLAN routing and source-interface policy | Routed flows and reply-to behavior validated; policy audit remains open | [`05-opnsense.md`](05-opnsense.md) |
 
 ---
 

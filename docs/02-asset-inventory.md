@@ -46,9 +46,9 @@ system is not presented as though it is already deployed.
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent management host; SSH/Ansible administration, health monitoring, and operational tooling | **Operational** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
-| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; Proxmox secondary Ethernet paths on Gi1-Gi4; VLAN segmentation pending | **Operational** |
+| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; Proxmox secondary Ethernet paths on Gi1-Gi4; upstream on Gi8 | **Operational** |
 | `cellular-wan01` | GL.iNet GL-A1300 travel router + compatible USB LTE modem/SIM | Planned | Backup Internet connectivity and WAN-failover testing | **Planned** |
-| `fw01` | OPNsense virtual firewall | Planned | Lab routing, firewalling, inter-VLAN policy | **Planned** |
+| `fw01` | OPNsense virtual firewall, VM 220 on `pve01` | `192.168.1.187` (WAN/flat), `10.10.10.1` (LABMGMT) | VLAN routing, firewalling, inter-zone policy | **Operational** |
 | `zabbix01` | Linux VM | Planned | NOC monitoring / availability / SNMP | **Planned** |
 
 `mgmt01` provides an administration path that is independent of the Proxmox
@@ -75,8 +75,9 @@ with the default route through:
 192.168.1.254
 ```
 
-The Cisco switch baseline is now staged and documented separately. VLAN and
-OPNsense design remains planned and is not treated as operational in this inventory.
+The Cisco switch and OPNsense VLAN routing are operational. Selected guests use
+tagged `vmbr1` interfaces while Proxmox management and supporting services remain
+on the flat `192.168.1.0/24` network.
 
 ---
 
@@ -134,9 +135,10 @@ automatic workload failover.
 
 | Asset | Platform | Address | Role | Monitoring / Integration | Status |
 |---|---|---:|---|---|---|
-| `wazuh01` | Linux | `192.168.1.206` | Wazuh SIEM / manager / dashboard | Central security monitoring | **Operational** |
-| `dc01` | Windows Server 2025 | `192.168.1.30` | Active Directory Domain Services / DNS | Windows Security events monitored through Wazuh | **Operational** |
-| `win11-01` | Windows 11 Pro | DHCP; `192.168.1.167` observed during validation | Domain-joined Windows endpoint | Wazuh agent, Sysmon, PowerShell telemetry | **Operational / DHCP** |
+| `nms01` | Ubuntu Linux | `10.10.40.10` | LibreNMS network monitoring | Network availability and SNMP monitoring | **Operational** |
+| `wazuh01` | Linux | `10.10.40.20`; legacy `192.168.1.206` retained during audit | Wazuh SIEM / manager / dashboard | Central security monitoring | **Operational / transitional** |
+| `dc01` | Windows Server 2025 | `10.10.20.10` | Active Directory Domain Services / DNS | Windows Security events monitored through Wazuh | **Operational** |
+| `win11-01` | Windows 11 Pro | `10.10.30.160` | Domain-joined Windows endpoint | Wazuh agent, Sysmon, PowerShell telemetry | **Operational** |
 
 Active Directory domain:
 
@@ -165,9 +167,9 @@ validated.
 
 | Asset | Platform | Address | Role | Monitoring / Use | Status |
 |---|---|---:|---|---|---|
-| `kali01` | Kali Linux | `192.168.1.211` | Controlled security-testing workstation | Nmap, attack simulation, packet/security testing | **Operational** |
-| `target01` | Ubuntu Linux | `192.168.1.238` | Monitored Linux / Apache target | Wazuh, Apache logging, controlled attack detection | **Operational** |
-| `vulnscan01` | Linux VM | `192.168.1.247` | Vulnerability-scanning platform | Authorized scanning of lab-owned systems | **Operational** |
+| `kali01` | Kali Linux | `10.10.50.113` | Controlled security-testing workstation | Nmap, attack simulation, packet/security testing | **Operational** |
+| `target01` | Ubuntu Linux | `10.10.60.10` | Monitored Linux / Apache target | Wazuh, Apache logging, controlled attack detection | **Operational** |
+| `vulnscan01` | Linux VM | Stopped; address requires revalidation | Vulnerability-scanning platform | Authorized scanning of lab-owned systems | **Staged** |
 
 `target01` has been used to generate and observe activity including:
 
@@ -318,21 +320,14 @@ physical rebuild continues.
 # 8. Planned Infrastructure
 
 The following assets or services are part of the target architecture but are not
-listed as operational until they have been configured and validated. `sw01` no
-longer appears in this table because its baseline configuration has been completed
-and it is now tracked as **Staged** in the current network inventory.
+listed as operational until they have been configured and validated. `sw01`,
+`fw01`, and VLANs 20-60 no longer appear here because they are operational and
+are tracked in the current network inventory.
 
 | Asset | Planned Role | State |
 |---|---|---|
 | `cellular-wan01` | Backup Internet via GL.iNet GL-A1300, compatible USB LTE modem, and SIM | Planned / compatibility and failover testing required |
-| `fw01` | OPNsense firewall/router | Planned |
 | `zabbix01` | Zabbix NOC monitoring server | Planned |
-| VLAN 10 | Management | Planned |
-| VLAN 20 | Infrastructure / servers | Planned |
-| VLAN 30 | User / endpoint systems | Planned |
-| VLAN 40 | SOC / monitoring | Planned |
-| VLAN 50 | Attack / testing | Planned |
-| VLAN 60 | Isolated / vulnerable systems | Planned |
 | Suricata telemetry | Network IDS / security telemetry | Planned |
 | Additional monitoring probe | Independent availability/network monitoring | Planned |
 
@@ -401,15 +396,17 @@ where that monitoring has already been exercised or documented.
 | `192.168.1.13` | `pve04` |
 | `192.168.1.20` | `dns01` |
 | `192.168.1.21` | `sw01` (managed-switch address) |
-| `192.168.1.30` | `dc01` |
+| `192.168.1.187` | `fw01` flat/WAN interface |
+| `10.10.20.10` | `dc01` |
+| `10.10.30.160` | `win11-01` |
+| `10.10.40.10` | `nms01` |
 | `192.168.1.151` | `apache-guacamole` |
-| `192.168.1.206` | `wazuh01` |
+| `10.10.40.20` | `wazuh01` |
 | `192.168.1.208` | `storage01` |
-| `192.168.1.211` | `kali01` |
+| `10.10.50.113` | `kali01` |
 | `192.168.1.236` | `tailscale01` |
-| `192.168.1.238` | `target01` |
+| `10.10.60.10` | `target01` |
 | `192.168.1.246` | `adsb01` |
-| `192.168.1.247` | `vulnscan01` |
 | `192.168.1.254` | AT&T gateway |
 
 ## DHCP / Observed Addresses
@@ -417,7 +414,6 @@ where that monitoring has already been exercised or documented.
 | Observed Address | Asset | Note |
 |---:|---|---|
 | `192.168.1.165` | `sqlserver2025` | DHCP address observed during validation |
-| `192.168.1.167` | `win11-01` | DHCP address observed during Windows/Wazuh validation |
 | `192.168.1.225` | `pialert` | DHCP address observed during inventory validation |
 
 DHCP-observed addresses should not be treated as permanent reservations unless

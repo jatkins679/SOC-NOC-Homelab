@@ -10,8 +10,8 @@ The goal was to build a Windows endpoint that could be monitored with Wazuh and 
 
 | System | Role | Address during testing |
 |---|---|---|
-| `win11-01` | Windows 11 Pro monitored endpoint | `192.168.1.167/24` (DHCP) |
-| `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
+| `win11-01` | Windows 11 Pro monitored endpoint | `10.10.30.160/24` (DHCP) |
+| `wazuh01` | Wazuh SIEM server | `10.10.40.20` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 
 `win11-01` was created as a Proxmox VM and initially configured with a local administrator account. It remains a standalone workstation pending the Active Directory phase of the lab.
@@ -47,7 +47,7 @@ Get-Service WazuhSvc
 and network connectivity to the Wazuh manager:
 
 ```powershell
-Test-NetConnection 192.168.1.206 -Port 1514
+Test-NetConnection 10.10.40.20 -Port 1514
 ```
 
 The connectivity test returned:

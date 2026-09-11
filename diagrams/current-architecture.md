@@ -1,85 +1,44 @@
 # Current Homelab Architecture
 
-This diagram reflects the implemented lab after the `pve04` expansion, workload rebalancing, and initial Cisco managed-switch deployment. The existing flat management path remains on the TRENDnet switch, while the Proxmox nodes now also have secondary physical Ethernet paths to `sw01` for the upcoming VLAN phase.
+This diagram reflects the operational segmented lab as verified on 2026-09-11.
 
 ```mermaid
 flowchart TB
-    WAN["AT&T Fiber / Gateway\n192.168.1.254"] --> SW["TRENDnet TEG-S160G\nCurrent unmanaged switch"]
-    CISCO["Cisco SG350-10 / sw01\n192.168.1.21\nManaged secondary path"]
-
-    SW --> PVE1["pve01\n192.168.1.10"]
-    SW --> PVE2["pve02\n192.168.1.11"]
-    SW --> PVE3["pve03\n192.168.1.12"]
-    SW --> PVE4["pve04 - Precision 5550\n192.168.1.13"]
-    CISCO -->|"Gi1 secondary Ethernet"| PVE1
-    CISCO -->|"Gi2 secondary Ethernet"| PVE2
-    CISCO -->|"Gi3 secondary Ethernet"| PVE3
-    CISCO -->|"Gi4 secondary Ethernet"| PVE4
-    SW --> MGMT["mgmt01 - Management Host\n192.168.1.5"]
-    SW --> DNS["dns01 - Pi-hole\n192.168.1.20"]
-
-    SW --> TAILSCALE["tailscale01 - Tailscale Subnet Router\n192.168.1.236\nTS 100.90.238.71"]
-
-    REMOTE["Remote Tailscale Clients"] -. "encrypted Tailscale tunnel" .-> TAILSCALE
-    SW --> STORAGE["storage01 - SMB Backup Storage\n192.168.1.208"]
-
-    MGMT -. "SSH / Ansible / health checks" .-> PVE1
-    MGMT -. "SSH / Ansible / health checks" .-> PVE2
-    MGMT -. "SSH / Ansible / health checks" .-> PVE3
-    MGMT -. "SSH / Ansible / health checks" .-> PVE4
-    MGMT -. "SSH / Ansible" .-> DNS
-    MGMT -. "authenticated SMB health check" .-> STORAGE
-
-    PVE1 --> PVE1WORK["dc01, win11-01, docker\nsqlserver2025, Guacamole, PiAlert .225"]
-    PVE2 --> PVE2WORK["kali01 / target01"]
-    PVE3 --> NMS["nms01 - VM 102"]
-    PVE3 --> WAZUH["wazuh01 - VM 500\n192.168.1.206"]
-    PVE4 --> VULN["vulnscan01 - VM 320\n192.168.1.247"]
-
-    STORAGE -. "CIFS backups" .-> PVE1
-    STORAGE -. "CIFS backups" .-> PVE2
-    STORAGE -. "CIFS backups" .-> PVE3
-    STORAGE -. "CIFS backups" .-> PVE4
-
-    PVE2WORK -- "Wazuh telemetry" --> WAZUH
-    PVE1WORK -- "Windows and service telemetry" --> WAZUH
+    ATT["AT&T gateway<br/>192.168.1.254"] --> FLAT["Flat LAN / TRENDnet<br/>192.168.1.0/24"]
+    FLAT --> SW["sw01 / Cisco SG350-10<br/>192.168.1.21"]
+    FLAT --> PVE["Proxmox management<br/>192.168.1.10-13"]
+    FLAT --> FW["fw01 / OPNsense<br/>192.168.1.187"]
+    SW --> FW
+    FW --> V20["VLAN 20 SERVERS<br/>dc01 10.10.20.10"]
+    FW --> V30["VLAN 30 USERS<br/>win11-01 10.10.30.160"]
+    FW --> V40["VLAN 40 SOCNOC<br/>nms01 .10 / wazuh01 .20"]
+    FW --> V50["VLAN 50 RED<br/>kali01 10.10.50.113"]
+    FW --> V60["VLAN 60 DMZRANGE<br/>target01 10.10.60.10"]
 ```
 
-## Current State
+## Flat-LAN Services
 
-- `pve01`, `pve02`, `pve03`, and `pve04` form the `homelab` Proxmox cluster.
-- The four-node cluster requires three votes for quorum and was verified quorate.
-- `pve04` is a Dell Precision 5550 using a Realtek USB Gigabit Ethernet adapter.
-- `mgmt01` remains independent of the cluster and provides SSH/Ansible administration, service-health validation, and scheduled operational monitoring.
-- `dns01` provides Pi-hole DNS at `192.168.1.20`.
+| Asset | Address | Role |
+|---|---:|---|
+| `mgmt01` | `192.168.1.5` | Independent administration host |
+| `dns01` | `192.168.1.20` | Pi-hole DNS |
+| `apache-guacamole` | `192.168.1.151` | Browser remote access |
+| `docker` | `192.168.1.174` | Uptime Kuma and ADS-B applications |
+| `pialert` | `192.168.1.225` observed | Flat broadcast-domain discovery |
+| `tailscale01` | `192.168.1.236` | Remote subnet access |
+| `adsb01` | `192.168.1.246` | ADS-B receiver |
+| `storage01` | `192.168.1.208` | SMB and Proxmox backup storage |
 
-- `tailscale01` is a dedicated Raspberry Pi Tailscale subnet router at `192.168.1.236` with Tailscale address `100.90.238.71`; it advertises remote access to the `192.168.1.0/24` homelab subnet.
-- `storage01` provides shared `t-20-backup` CIFS storage.
-- `nms01` and `wazuh01` run on `pve03`; `vulnscan01` runs on `pve04`.
-- VM disks remain local to each node; backups provide recovery protection.
-- This design does not claim Ceph, Proxmox HA, or automatic workload failover.
-- `sw01` is operational at `192.168.1.21/24` and is physically connected to the Proxmox secondary Ethernet paths on Gi1-Gi4. The existing `vmbr0` management path remains on `sw-home01`; VLAN segmentation is not yet operational.
+Proxmox guest disks remain local to their nodes and `t-20-backup` provides backup-based recovery. The lab does not claim Ceph, Proxmox HA, or automatic workload failover.
 
-## Security and Identity Paths
+## Security Paths
 
-| Source | Function | Destination |
-|---|---|---|
-| `win11-01` | Sysmon, PowerShell, and Windows Security telemetry | `wazuh01` |
-| `dc01` | Active Directory security telemetry | `wazuh01` |
-| `target01` | Linux, Apache, Auditd, and FIM telemetry | `wazuh01` |
-| `kali01` | Controlled test activity | Lab-owned target systems |
-| `vulnscan01` | Authorized vulnerability scanning | Lab-owned systems |
-| Remote Tailscale clients | Encrypted remote subnet access via `tailscale01` | `192.168.1.0/24` homelab LAN |
+| Source | Required destination and service |
+|---|---|
+| `dc01`, `win11-01`, `target01` | Wazuh manager `10.10.40.20:1514/tcp` |
+| `kali01` | Explicitly authorized attack-lab targets |
+| `nms01` | Approved ICMP/SNMP/service monitoring targets |
+| `apache-guacamole` | Explicit SSH/RDP destinations through OPNsense |
+| Uptime Kuma on `docker` | Approved service endpoints through OPNsense |
 
-The `corp.home.arpa` Active Directory domain is operational. `dc01` provides AD
-DS and AD-integrated DNS, and `win11-01` is domain joined with its secure channel
-validated.
-
-## Next Network Phase
-
-The current Proxmox management path remains on the 16-port unmanaged TRENDnet TEG-S160G. The Cisco SG350-10 is now physically deployed as `sw01`, with Gi1-Gi4 connected to the secondary Ethernet paths of `pve01`-`pve04`. The next phase is to complete `vmbr1` and VLAN-aware configuration where required, define VLAN and trunk behavior, introduce OPNsense routing and policy enforcement, and validate segmentation before describing the VLAN design as operational. The TRENDnet remains the home-network switch rather than being replaced by `sw01`.
-
-A separate future resilience test will use the existing GL.iNet GL-A1300 travel
-router with a compatible USB LTE modem and SIM as a backup Internet connection.
-Modem compatibility, cellular service, failover, recovery to the primary WAN, and
-monitoring behavior must be tested before this is presented as operational.
+The legacy flat NIC on `wazuh01` remains temporarily during the dependency audit. It should be removed only after issue #1's monitoring, DNS, firewall, and remote-access dependencies have been remediated and validated.

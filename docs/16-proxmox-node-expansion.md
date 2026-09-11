@@ -1,5 +1,7 @@
 # Proxmox Fourth-Node Expansion and Workload Rebalancing
 
+> Historical change record: addresses and planned-state statements are retained as evidence of the environment at the time. Use the asset inventory for current values.
+
 ## Objective
 
 This change expanded the `homelab` Proxmox VE cluster from three nodes to four

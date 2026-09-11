@@ -1,5 +1,7 @@
 # SOC/NOC Incident and Change Ticket Examples
 
+> Historical ticket evidence: addresses and infrastructure states are preserved as recorded at the time. They are not a current configuration source.
+
 ## Purpose
 
 This document contains realistic incident, service, and change-ticket examples

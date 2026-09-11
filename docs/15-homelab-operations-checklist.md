@@ -16,11 +16,9 @@ in NOC, SOC, systems-administration, and infrastructure-support roles:
 - validate Windows/Active Directory health;
 - document exceptions and follow-up work.
 
-This checklist is intentionally based on the services that are currently
-implemented. The Cisco SG350-10 baseline is now staged and receives limited
-configuration/backup checks, while production switch operation, Zabbix, SNMP
-monitoring, VLAN segmentation, and OPNsense remain separate until deployment and
-validation.
+This checklist is based on the services currently implemented, including the
+Cisco SG350-10, VLANs 20-60, and OPNsense routing. Zabbix and other explicitly
+planned services remain excluded until deployed and validated.
 
 ---
 
@@ -34,13 +32,14 @@ validation.
 | `pve04` | Proxmox VE cluster node | `192.168.1.13` |
 | `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
-| `nms01` | LibreNMS network monitoring | `192.168.1.22` |
+| `nms01` | LibreNMS network monitoring | `10.10.40.10` |
 | `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
-| `dc01` | Active Directory / DNS | `192.168.1.30` |
+| `fw01` | OPNsense router/firewall | `192.168.1.187` / `10.10.10.1` |
+| `dc01` | Active Directory / DNS | `10.10.20.10` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
-| `wazuh01` | Wazuh SIEM | `192.168.1.206` |
-| `kali01` | Security-testing system | `192.168.1.211` |
-| `target01` | Ubuntu monitored target | `192.168.1.238` |
+| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
+| `kali01` | Security-testing system | `10.10.50.113` |
+| `target01` | Ubuntu monitored target | `10.10.60.10` |
 | `storage01` | File / backup storage | `192.168.1.208` |
 | `t-20-backup` | Proxmox shared backup storage | CIFS target |
 
@@ -143,7 +142,7 @@ Then test reachability among cluster nodes.
 ## 2.2 Wazuh Core Services
 
 `wazuh01` provides the lab's Wazuh manager, indexer, dashboard, and Filebeat
-services at `192.168.1.206`.
+services at `10.10.40.20`.
 
 The automated `mgmt01` health check validates:
 
@@ -237,7 +236,7 @@ its agent is technically still enrolled.
 
 ## LibreNMS / NOC Monitoring
 
-`nms01` provides LibreNMS network monitoring at `192.168.1.22`.
+`nms01` provides LibreNMS network monitoring at `10.10.40.10`.
 
 The automated `mgmt01` health checks validate:
 

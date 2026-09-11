@@ -22,9 +22,9 @@ The initial goal was to deploy Wazuh as a dedicated virtual machine in the Proxm
 | System | Role | IP Address |
 |---|---|---|
 | pve01 | Proxmox host for Wazuh VM | 192.168.1.10 |
-| wazuh01 | Wazuh all-in-one server | 192.168.1.206 |
-| target01 | Ubuntu monitored endpoint | 192.168.1.238 |
-| kali01 | Security testing system | 192.168.1.211 |
+| wazuh01 | Wazuh all-in-one server | 10.10.40.20 |
+| target01 | Ubuntu monitored endpoint | 10.10.60.10 |
+| kali01 | Security testing system | 10.10.50.113 |
 | dns01 | Pi-hole DNS | 192.168.1.20 |
 
 `wazuh01` runs as VM 500 on the Proxmox cluster.
@@ -41,7 +41,9 @@ The Wazuh server was provisioned with:
 - Proxmox QEMU guest agent
 - DNS through `dns01`
 
-The VM uses the Proxmox bridge `vmbr0`.
+The initial VM used `vmbr0`. The current system is transitional and dual-homed:
+the Wazuh service address is `10.10.40.20` on VLAN 40 through `vmbr1`, while the
+legacy flat interface remains temporarily during GitHub issue #1 remediation.
 
 ## Initial VM Creation
 
@@ -96,7 +98,7 @@ wazuh01
 The rebuilt server ultimately received:
 
 ```text
-192.168.1.206
+10.10.40.20
 ```
 
 from DHCP.
@@ -311,7 +313,7 @@ active
 The web dashboard was then accessed at:
 
 ```text
-https://192.168.1.206
+https://10.10.40.20
 ```
 
 and successful authentication confirmed the Wazuh stack was operational.
@@ -352,14 +354,14 @@ The first endpoint enrolled into Wazuh was:
 
 ```text
 target01
-192.168.1.238
+10.10.60.10
 ```
 
 Before installing the agent, connectivity to the Wazuh server was tested:
 
 ```bash
-nc -zv 192.168.1.206 1514
-nc -zv 192.168.1.206 1515
+nc -zv 10.10.40.20 1514
+nc -zv 10.10.40.20 1515
 ```
 
 Both connections succeeded.
@@ -394,8 +396,8 @@ The endpoint was installed and configured to use `wazuh01`:
 
 ```bash
 sudo env \
-WAZUH_MANAGER="192.168.1.206" \
-WAZUH_REGISTRATION_SERVER="192.168.1.206" \
+WAZUH_MANAGER="10.10.40.20" \
+WAZUH_REGISTRATION_SERVER="10.10.40.20" \
 WAZUH_AGENT_NAME="target01" \
 apt-get install -y wazuh-agent
 ```
@@ -421,7 +423,7 @@ A Windows 11 Pro endpoint was added as a second Wazuh agent:
 
 ```text
 Agent name: win11-01
-Address during testing: 192.168.1.167
+Address during testing: 10.10.30.160
 Agent ID: 002
 ```
 
@@ -445,7 +447,7 @@ Get-Service WazuhSvc
 and manager connectivity was confirmed with:
 
 ```powershell
-Test-NetConnection 192.168.1.206 -Port 1514
+Test-NetConnection 10.10.40.20 -Port 1514
 ```
 
 which returned:
@@ -550,8 +552,8 @@ sudo journalctl -xeu wazuh-indexer.service --no-pager
 
 sudo ss -tlnp
 
-nc -zv 192.168.1.206 1514
-nc -zv 192.168.1.206 1515
+nc -zv 10.10.40.20 1514
+nc -zv 10.10.40.20 1515
 
 sudo systemctl is-active wazuh-agent
 ```
@@ -646,4 +648,4 @@ Planned future work includes:
 - Alert tuning
 - Active Response testing
 - Additional MITRE ATT&CK-aligned exercises
-- Integration with the future segmented/VLAN lab design
+- Complete removal of legacy flat-network dependencies under GitHub issue #1

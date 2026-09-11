@@ -30,7 +30,7 @@ The lab currently includes:
 - Controlled SOC detection exercises
 - Shared Proxmox backup storage
 
-Managed switching is now in the physical deployment phase. The Cisco SG350-10 is operational as `sw01` at `192.168.1.21/24`, with the Proxmox nodes' secondary Ethernet paths connected to Gi1-Gi4. Existing `vmbr0` management traffic remains on the TRENDnet unmanaged switch and the flat `192.168.1.0/24` network. VLAN segmentation and OPNsense routing are not yet operational; they remain the next network-engineering phase.
+Managed switching, VLAN segmentation, and OPNsense routing are operational. The Cisco SG350-10 is `sw01` at `192.168.1.21/24`; Gi1-Gi4 connect the Proxmox secondary Ethernet paths and Gi8 connects upstream to the unmanaged flat-LAN segment. Existing `vmbr0` management traffic remains on the TRENDnet switch and `192.168.1.0/24`, while selected guests use tagged VLANs 20-60 through `vmbr1` and OPNsense `fw01`.
 
 ---
 
@@ -47,13 +47,15 @@ Managed switching is now in the physical deployment phase. The Cisco SG350-10 is
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
 | `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
 | `tailscale01` | Dedicated Tailscale subnet router / remote-access gateway | `192.168.1.236` |
-| `wazuh01` | Wazuh SIEM server | `192.168.1.206` |
-| `target01` | Ubuntu monitored/test endpoint | `192.168.1.238` |
-| `kali01` | Security-testing system | `192.168.1.211` |
-| `vulnscan01` | Vulnerability-scanning system | `192.168.1.247` |
+| `fw01` | OPNsense router/firewall (VM 220) | `192.168.1.187` / `10.10.10.1` |
+| `nms01` | LibreNMS network monitoring | `10.10.40.10` |
+| `wazuh01` | Wazuh SIEM server | `10.10.40.20` (legacy flat NIC retained during audit) |
+| `target01` | Ubuntu monitored/test endpoint | `10.10.60.10` |
+| `kali01` | Security-testing system | `10.10.50.113` |
+| `vulnscan01` | Vulnerability-scanning system | Stopped; address requires revalidation |
 | `pialert` | Network-presence monitoring service | DHCP (`192.168.1.225` observed) |
-| `dc01` | Windows Server 2025 AD DS / DNS domain controller | `192.168.1.30` |
-| `win11-01` | Windows 11 Pro domain-joined monitored endpoint | DHCP (`192.168.1.167` during validation) |
+| `dc01` | Windows Server 2025 AD DS / DNS domain controller | `10.10.20.10` |
+| `win11-01` | Windows 11 Pro domain-joined monitored endpoint | `10.10.30.160` |
 
 The Proxmox cluster is named:
 
@@ -145,18 +147,22 @@ Defines daily, weekly, monthly, and periodic operational checks for Proxmox,
 Wazuh, Pi-hole DNS, backups, storage, Windows endpoints, Active Directory,
 capacity, telemetry health, maintenance readiness, and recovery testing.
 
-The Cisco baseline is now documented separately from its future VLAN, SNMP,
-syslog, and SPAN work so the repository distinguishes staging from production
-operation.
+The Cisco, VLAN, and OPNsense operating state is documented separately from
+future SNMPv3, syslog, and SPAN expansion.
 
 ---
 
 #### [04 - Managed Switching and VLAN Design](docs/04-network-vlans.md)
 
 Documents the Cisco SG350-10 (`sw01`) bench configuration, firmware validation,
-configuration backup, current default-VLAN state, initial port convention, and
-planned VLAN design. The document explicitly distinguishes completed switch
-staging from VLANs and routing that have not yet been implemented.
+configuration backup, current port convention, operational VLANs, OPNsense
+routing, and the current migration/audit state.
+
+#### [24 - VLAN Migration Dependency Checklist](docs/24-vlan-migration-dependency-checklist.md)
+
+Defines the mandatory pre/post-migration audit across firewall policy, DNS,
+LibreNMS, Wazuh, Uptime Kuma, Guacamole, automation, and documentation. The
+remaining post-migration remediation is tracked in GitHub issue #1.
 
 ---
 
@@ -611,14 +617,14 @@ It currently provides telemetry from:
 
 ---
 
-## Managed Switching and Planned Network Design
+## Managed Switching and Segmented Network
 
-The managed-switch deployment phase is underway. `sw01` is operational at
-`192.168.1.21/24`, with the Proxmox secondary Ethernet paths connected to Gi1-Gi4.
-The existing `vmbr0` management path remains on the TRENDnet switch. The next
-major network phase is VLAN-aware configuration, segmentation, and OPNsense routing.
+`sw01` is operational at `192.168.1.21/24`, with the Proxmox secondary Ethernet
+paths connected to Gi1-Gi4 and the unmanaged-switch uplink on Gi8. Existing
+`vmbr0` management remains on the flat TRENDnet path; VLAN-tagged guests use
+`vmbr1` and OPNsense `fw01` for routed, filtered connectivity.
 
-The planned design includes separate logical areas for:
+The operational design includes separate logical areas for:
 
 - Management
 - Servers
@@ -627,13 +633,10 @@ The planned design includes separate logical areas for:
 - Attack/testing systems
 - Guest access
 
-The current Cisco baseline is documented in
-[`04-network-vlans.md`](docs/04-network-vlans.md). The switch currently retains
-the default flat VLAN state; the exact 802.1Q trunking, access-port assignments,
-OPNsense routing, and inter-VLAN policy will be documented only after they are
-implemented and validated.
-
-I am intentionally not documenting planned VLANs as though they already exist.
+The current switching, VLAN, OPNsense, and guest attachment state is documented
+in [`04-network-vlans.md`](docs/04-network-vlans.md). The dependency audit and
+mandatory migration gates are documented in
+[`24-vlan-migration-dependency-checklist.md`](docs/24-vlan-migration-dependency-checklist.md).
 
 ---
 
@@ -676,14 +679,16 @@ I am intentionally not documenting planned VLANs as though they already exist.
 - [x] Configure `sw01` with fixed management address `192.168.1.21/24`
 - [x] Validate Cisco firmware and baseline VLAN state from the CLI
 - [x] Download a baseline Cisco startup-configuration backup
+- [x] Deploy OPNsense `fw01`
+- [x] Implement VLANs 20-60 and migrate the first guest set
+- [x] Validate Wazuh agent traffic across VLANs
 
 ### In Progress / Planned
 
 - [ ] Add screenshots and diagrams to completed documentation
-- [ ] Migrate homelab Ethernet connections to `sw01` while retaining `sw-home01` for the home network
-- [ ] Validate all lab connectivity on the flat/default VLAN after the physical move
-- [ ] Design and implement VLANs
-- [ ] Deploy OPNsense
+- [ ] Complete GitHub issue #1 post-VLAN dependency remediation
+- [ ] Add stable DNS records for all migrated systems
+- [ ] Update LibreNMS, Uptime Kuma, Guacamole, and service bindings to VLAN addresses
 - [ ] Validate cellular backup Internet using the GL.iNet GL-A1300 travel router, a compatible USB LTE modem, and a SIM
 - [ ] Add additional Linux agents
 - [ ] Monitor SSH `authorized_keys`
@@ -707,12 +712,13 @@ The documentation numbering is intentionally organized around major project phas
 | `02-asset-inventory.md` | Current physical, virtual, service, and monitoring inventory | Active reference |
 | `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
 | `03-proxmox-cluster-build.md` | Proxmox cluster build and current four-node validation | Complete |
-| `04-network-vlans.md` | Cisco switch baseline, managed switching, and VLAN design | Active / staging documented |
-| `05-opnsense.md` | OPNsense routing/firewalling | Planned |
+| `04-network-vlans.md` | Cisco switching, VLANs, and OPNsense topology | Active reference |
+| `05-opnsense.md` | OPNsense routing/firewalling | Active reference |
 | `06-wazuh-siem.md` | Wazuh deployment | Complete |
 | `07-zabbix-monitoring.md` | Infrastructure monitoring | Planned |
 | `08-windows-telemetry.md` | Windows endpoint telemetry | Complete |
 | `09-attack-detection-labs.md` | SOC detection exercises | Active / documented |
+| `24-vlan-migration-dependency-checklist.md` | Mandatory VLAN migration dependency audit | Active reference |
 | `10-active-directory-lab.md` | Active Directory and identity monitoring | Complete |
 | `11-soc-noc-skills-matrix.md` | SOC/NOC skills matrix | Active reference |
 | `12-soc-alert-triage-playbook.md` | SOC alert triage and investigation | Active reference |

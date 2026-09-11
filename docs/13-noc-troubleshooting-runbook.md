@@ -114,11 +114,11 @@ Examples:
 | `pve04` | Proxmox cluster node | `192.168.1.13` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
 | `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
-| `dc01` | Active Directory / DNS | `192.168.1.30` |
+| `dc01` | Active Directory / DNS | `10.10.20.10` |
 | `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
-| `wazuh01` | Wazuh SIEM | `192.168.1.206` |
-| `kali01` | Security testing | `192.168.1.211` |
-| `target01` | Ubuntu monitored target | `192.168.1.238` |
+| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
+| `kali01` | Security testing | `10.10.50.113` |
+| `target01` | Ubuntu monitored target | `10.10.60.10` |
 | `t-20-backup` | Proxmox CIFS backup storage | Shared storage target |
 
 The primary management network is currently:
@@ -930,8 +930,8 @@ sudo journalctl -u wazuh-agent --since "30 minutes ago" --no-pager
 Check connectivity to the manager:
 
 ```bash
-nc -zv 192.168.1.206 1514
-nc -zv 192.168.1.206 1515
+nc -zv 10.10.40.20 1514
+nc -zv 10.10.40.20 1515
 ```
 
 Then verify:
@@ -992,9 +992,9 @@ Use `nc` to separate a network problem from an application-port problem.
 Examples:
 
 ```bash
-nc -vz 192.168.1.206 443
-nc -vz 192.168.1.206 1514
-nc -vz 192.168.1.206 1515
+nc -vz 10.10.40.20 443
+nc -vz 10.10.40.20 1514
+nc -vz 10.10.40.20 1515
 nc -vz 192.168.1.189 3389
 ```
 
@@ -1031,12 +1031,13 @@ Hostname:             sw01
 Management address:   192.168.1.21/24
 Active image:         2.5.9.55
 Inactive image:       2.5.0.83
-Current VLAN state:   VLAN 1 / default flat configuration
+Current VLAN state:   VLANs 10-60 operational on the managed path
 Baseline config:      backed up before deployment
 ```
 
-The observed default VLAN state showed VLAN 1 with `gi1-10` and `Po1-8`
-untagged. VLAN segmentation is therefore **not** yet an operational dependency.
+The original default-VLAN observation is historical. Current troubleshooting
+must include switch VLAN membership, Proxmox `vmbr1` tags, OPNsense source-
+interface policy, routing, and return-path behavior.
 
 ## Check Switch Identity and Firmware
 

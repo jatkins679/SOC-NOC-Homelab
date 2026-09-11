@@ -1,5 +1,7 @@
 # Proxmox Cluster Build, Expansion, and Validation
 
+> Historical build record: addresses and planned-state statements in this document describe the environment when the work was performed. Use the asset inventory and current architecture for live values.
+
 ## Objective
 
 The initial stage of the homelab rebuild consolidated three Proxmox VE hosts into a single manageable cluster. The cluster was later expanded to four nodes with the addition of `pve04`.

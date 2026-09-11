@@ -1,265 +1,75 @@
-# Cisco Managed Switching and VLAN Design
+# Cisco Switching, VLANs, and OPNsense
 
-## Purpose
+## Current State
 
-This document tracks the managed-switch phase of the SOC/NOC homelab.
+The segmented lab network is operational. The original flat `192.168.1.0/24` network remains the Proxmox management and household network, while selected guests use tagged VLANs on `vmbr1`. OPNsense `fw01` routes and filters traffic between the VLANs and the flat network.
 
-It intentionally separates three different states:
-
-1. **Completed switch staging** — the Cisco SG350-10 has been received, identified,
-   given a unique management address, checked from the CLI, and backed up.
-2. **Physical homelab deployment in progress** — connecting Proxmox secondary Ethernet paths to `sw01`
-   while preserving the TRENDnet switch for the existing home network.
-3. **Future segmentation** — VLANs, trunks, OPNsense routing, SNMP, syslog, and
-   SPAN are documented as planned until they are implemented and validated.
-
-The goal is to show actual network-engineering work without presenting a future
-architecture as though it already exists.
-
----
-
-# 1. Current Network State
-
-The existing flat management/home network remains:
-
-```text
-192.168.1.0/24
-Gateway: 192.168.1.254
-```
-
-The current home-network switch is:
-
-```text
-sw-home01
-TRENDnet TEG-S160G
-16-port unmanaged Ethernet switch
-```
-
-The Cisco switch is the managed **homelab** switch. It is not intended to replace
-`sw-home01` as the general household switch.
-
-The Proxmox hosts now use a dual-path design: `vmbr0` remains the existing management path through `sw-home01` on `192.168.1.0/24`, while the secondary Ethernet path connects to `sw01` through `vmbr1` where configured. Physical connectivity to `sw01` does not mean VLAN segmentation is complete.
-
----
-
-# 2. Cisco SG350-10 Baseline
-
-| Item | Verified / Current State |
+| Component | Current role |
 |---|---|
-| Hostname | `sw01` |
-| Model | Cisco SG350-10 |
-| Management address | `192.168.1.21/24` |
-| Active firmware image | `2.5.9.55` |
-| Inactive firmware image | `2.5.0.83` |
-| Configuration backup | Baseline startup configuration downloaded |
-| VLAN state | Default VLAN 1; segmentation not yet implemented |
-| Deployment state | Physically deployed for Proxmox secondary links; VLAN segmentation pending |
+| AT&T gateway | `192.168.1.254`; household Internet edge |
+| TRENDnet TEG-S160G | Unmanaged flat-LAN switch |
+| `sw01` Cisco SG350-10 | Managed VLAN switch at `192.168.1.21/24` |
+| `fw01` | OPNsense VM 220 on `pve01`; `192.168.1.187` flat/WAN and `10.10.10.1` LABMGMT |
+| Proxmox `vmbr0` | Flat management path on `192.168.1.0/24` |
+| Proxmox `vmbr1` | VLAN-aware guest path through `sw01` |
 
-The fixed management address was assigned before the switch was introduced into
-the live LAN so that it would not conflict with another device.
+## Physical Port Map
 
----
-
-# 3. Firmware Validation
-
-The switch firmware was checked from the CLI with:
-
-```text
-show version
-```
-
-Observed image state:
-
-```text
-Active-image: flash://system/images/image_tesla_hybrid_2.5.9.55_release_cisco_signed.bin
-Version: 2.5.9.55
-Date: 20-Jan-2026
-
-Inactive-image: flash://system/images/image1.bin
-Version: 2.5.0.83
-Date: 18-Jun-2019
-```
-
-This records the configuration/firmware baseline established before deployment. The switch now carries the Proxmox secondary Ethernet links.
-VLAN segmentation remains pending.
-
----
-
-# 4. VLAN Baseline
-
-The VLAN database was checked with:
-
-```text
-show vlan
-```
-
-Observed baseline:
-
-```text
-Vlan  Name  Tagged Ports  UnTagged Ports  Created by
-----  ----  ------------  --------------  ----------
-1     1                   gi1-10,Po1-8    DV
-```
-
-This is important because it confirms that the switch is still in a default flat
-Layer-2 state. The repository therefore does **not** claim that VLAN segmentation
-is already working.
-
----
-
-# 5. Initial Physical Port Convention
-
-The currently accepted initial convention is:
-
-| Switch port | Intended connection | State |
+| `sw01` port | Connection | State |
 |---|---|---|
-| `Gi1` | `pve01` | Connected secondary Ethernet path |
-| `Gi2` | `pve02` | Connected secondary Ethernet path |
-| `Gi3` | `pve03` | Connected secondary Ethernet path |
-| `Gi4` | `pve04` | Connected secondary Ethernet path |
-| `Gi8` | Upstream / BGW320 | Planned physical connection |
-| Other ports | `storage01`, `mgmt01`, `dns01`, future devices | Record during rebuild |
+| Gi1 | `pve01` secondary Ethernet / `vmbr1` | Up, trunk |
+| Gi2 | `pve02` secondary Ethernet / `vmbr1` | Up, trunk |
+| Gi3 | `pve03` secondary Ethernet / `vmbr1` | Up, trunk |
+| Gi4 | `pve04` secondary Ethernet / `vmbr1` | Up, trunk |
+| Gi8 | Upstream to the unmanaged flat-LAN switch | Up, root port |
 
-The cable labels deliberately keep the switch-port field visible so the final
-port assignment can be recorded at the time of connection rather than recalled
-later from memory.
+The switch runs RSTP. On 2026-09-11, Gi8 showed no FCS, collision, carrier, symbol, or pause-frame errors. The exact initiator of that morning's transient Layer-2 disruption could not be proven because the unmanaged switch has no logs and the AT&T gateway had already discarded the relevant history.
 
-During deployment, the secondary Ethernet paths on `pve01` and `pve02` were verified at 1 Gbps/full duplex. An apparent `pve02` secondary-NIC failure was traced to an incompletely seated power connection. After correcting the power connection and rebooting, the built-in `nic1` negotiated normally; the USB Ethernet adapter used during troubleshooting is therefore not required for the planned Cisco path.
+## VLAN Matrix
 
----
+| VLAN | OPNsense interface | Zone | Subnet | Gateway | Current guest |
+|---:|---|---|---|---|---|
+| 10 | `lan` / LABMGMT | Management | `10.10.10.0/24` | `10.10.10.1` | OPNsense management |
+| 20 | `opt1` / SERVERS | Servers | `10.10.20.0/24` | `10.10.20.1` | `dc01` — `10.10.20.10` |
+| 30 | `opt2` / USERS | Users | `10.10.30.0/24` | `10.10.30.1` | `win11-01` — `10.10.30.160` |
+| 40 | `opt3` / SOCNOC | Monitoring | `10.10.40.0/24` | `10.10.40.1` | `nms01` — `10.10.40.10`; `wazuh01` — `10.10.40.20` |
+| 50 | `opt4` / RED | Attack lab | `10.10.50.0/24` | `10.10.50.1` | `kali01` — `10.10.50.113` |
+| 60 | `opt5` / DMZRANGE | Vulnerable targets | `10.10.60.0/24` | `10.10.60.1` | `target01` — `10.10.60.10` |
 
-# 6. Physical Deployment Sequence
+## Proxmox Guest Attachment
 
-Before VLAN work begins, the first deployment objective is deliberately simple:
+| VM | VMID / node | Bridge and tag |
+|---|---|---|
+| `dc01` | 100 / `pve01` | `vmbr1`, VLAN 20 |
+| `win11-01` | 101 / `pve01` | `vmbr1`, VLAN 30 |
+| `fw01` | 220 / `pve01` | `vmbr0` plus untagged/trunk `vmbr1` |
+| `kali01` | 300 / `pve02` | `vmbr1`, VLAN 50 |
+| `target01` | 400 / `pve02` | `vmbr1`, VLAN 60 |
+| `nms01` | 102 / `pve03` | `vmbr1`, VLAN 40 |
+| `wazuh01` | 500 / `pve03` | legacy `vmbr0` plus `vmbr1`, VLAN 40 |
 
-```text
-Connect Proxmox secondary Ethernet links to sw01
-        ↓
-Preserve existing vmbr0 management paths on sw-home01
-        ↓
-Verify physical links, management reachability, and cluster health
-        ↓
-Only then configure VLAN-aware paths and begin segmentation work
+## Firewall Policy Principles
+
+- Rules are applied on the source interface and permit only documented service flows.
+- VLAN 50 and VLAN 60 remain restricted except for explicit attack-lab and telemetry paths.
+- Wazuh agents use TCP 1514 to `10.10.40.20`; TCP 1515 is allowed only where enrollment is required.
+- Trusted traffic that enters OPNsense through the flat/WAN interface must use **Disable reply-to** when the source's normal gateway is the AT&T router. Without it, OPNsense can force replies toward the wrong gateway and break otherwise permitted TCP sessions.
+- Every permitted flow must be tested from its actual source and, when needed, verified with OPNsense live logs or packet capture.
+
+## Management Access
+
+From John's Mac, create the OPNsense GUI tunnel and keep the terminal open:
+
+```bash
+ssh -N -L 8443:10.10.10.1:443 root@192.168.1.10
 ```
 
-This reduces the number of variables changed at one time.
+Then browse to `https://localhost:8443`.
 
-Post-move validation should include:
+## Migration Control
 
-- `sw01` management reachability at `192.168.1.21`;
-- `pve01` through `pve04` management reachability;
-- four-node Proxmox quorum;
-- `dns01` name resolution;
-- `storage01` and `t-20-backup` reachability;
-- Wazuh and monitored endpoint connectivity;
-- Internet access through the existing AT&T gateway.
+The guest address change is only one part of a migration. Monitoring databases, agent configuration, remote-access tools, DNS, automation, firewall rules, and documentation must be audited before the old address is removed. Follow [`24-vlan-migration-dependency-checklist.md`](24-vlan-migration-dependency-checklist.md) for every future migration. Remaining remediation is tracked in GitHub issue #1.
 
----
+## Historical Baseline
 
-# 7. Planned VLAN Design
-
-The current target VLAN set is:
-
-| VLAN | Intended role | Status |
-|---:|---|---|
-| 10 | Management | Planned |
-| 20 | Infrastructure / servers | Planned |
-| 30 | User / endpoint systems | Planned |
-| 40 | SOC / monitoring | Planned |
-| 50 | Attack / testing | Planned |
-| 60 | Isolated / vulnerable systems | Planned |
-
-These IDs and roles are design targets, not claims of an operational segmented
-network.
-
----
-
-# 8. Planned Routing and Security Phase
-
-Future work includes:
-
-- 802.1Q trunking;
-- VLAN-aware Proxmox bridges where required;
-- OPNsense as `fw01`;
-- inter-VLAN routing;
-- firewall policy between security zones;
-- explicit isolation of attack/vulnerable networks from the home LAN;
-- DHCP/DNS decisions per VLAN;
-- validation of permitted and denied paths.
-
-A useful milestone will be a test endpoint on VLAN 30 that can reach its intended
-gateway and Internet path while VLAN 50/60 systems remain restricted from the
-home network.
-
----
-
-# 9. Planned Observability
-
-After switching and VLANs are stable, `sw01` can become an infrastructure
-telemetry source through:
-
-- SNMPv3 for NOC monitoring;
-- syslog for centralized event review;
-- interface/error counters;
-- spanning-tree state;
-- MAC-address table review;
-- SPAN / port mirroring for selected packet-analysis exercises.
-
-These features remain planned until their configuration and collected evidence
-are documented.
-
----
-
-# 10. Change and Rollback Strategy
-
-The first physical move should have a simple rollback:
-
-1. preserve the known-good `sw01` baseline;
-2. move only the intended lab links;
-3. verify the flat network before changing VLANs;
-4. if broad connectivity fails, reconnect affected lab links to the prior
-   TRENDnet path;
-5. restore `192.168.1.0/24` service first;
-6. review cable labels, switch ports, and VLAN state before retrying.
-
-The TRENDnet switch remains available as the known-good home-network path during
-this phase.
-
----
-
-# 11. Evidence to Add as Work Continues
-
-Useful future evidence includes:
-
-- sanitized `show interfaces status` output;
-- `show vlan` after each segmentation phase;
-- trunk configuration and validation;
-- switch-port/cable mapping;
-- interface counter review;
-- MAC-table and spanning-tree inspection;
-- SNMPv3 monitoring screenshots;
-- syslog evidence;
-- SPAN capture exercise;
-- before/after physical photographs.
-
-Sensitive values, passwords, secrets, and private configuration data should not
-be committed.
-
----
-
-# 12. Skills Demonstrated So Far
-
-The staging work already demonstrates:
-
-- managed-switch console/CLI access;
-- hostname and management-address planning;
-- firmware-state validation;
-- VLAN database inspection;
-- configuration backup;
-- planned port mapping;
-- pre-change baseline capture;
-- rollback thinking;
-- separation of implemented state from future design.
-
-VLAN trunking, inter-VLAN routing, SNMPv3, syslog, and SPAN will move from
-planned to demonstrated only after they are implemented and validated.
+Before segmentation, `sw01` used the default VLAN 1 on all ports and OPNsense was only planned. That state is retained in dated build/ticket records; it is no longer the current operating state.
