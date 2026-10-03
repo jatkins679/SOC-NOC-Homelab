@@ -307,13 +307,19 @@ rather than distributed Ceph storage on the small cluster nodes.
 
 # 7. Power Infrastructure
 
-| Asset | Role | Planned / Current Use |
+The canonical UPS identifiers are:
+
+| Asset | Description | Planned / Current Use |
 |---|---|---|
-| APC UPS 600VA + USB | Network / lightweight infrastructure UPS | Gateway, switching, DNS and other lightweight network devices |
-| APC Smart-UPS 1000 | Compute/storage UPS | Proxmox nodes and storage equipment |
+| `UPS01` | Older of the two large UPS units | Large-load power domain; exact attached devices are recorded after load/runtime validation |
+| `UPS02` | Newer of the two large UPS units | Large-load power domain; includes the recently added large UPS; exact attached devices are recorded after load/runtime validation |
+| `UPS03` | Small UPS / surge protector | Lightweight/network/support-device power domain as appropriate |
+
+These identifiers supersede the earlier convention in which the small UPS could
+be referred to as `UPS02`. The small UPS is now always `UPS03`.
 
 Exact power distribution remains subject to load and runtime testing as the
-physical rebuild continues.
+physical layout and graceful-shutdown design are finalized.
 
 ---
 
