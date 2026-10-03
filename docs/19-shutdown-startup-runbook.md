@@ -16,12 +16,26 @@ loss and to verify dependencies in a deliberate order during recovery.
 
 # 1. Change Scope
 
+# UPS Naming Convention
+
+```text
+UPS01  older of the two large UPS units
+UPS02  newer of the two large UPS units
+UPS03  small UPS / surge protector
+```
+
+These names are the canonical identifiers for power-distribution and future NUT
+shutdown policy. Earlier references that used `UPS02` for the small UPS are
+superseded; the small UPS is now `UPS03`.
+
+---
+
 Typical work covered by this runbook:
 
 - moving equipment between shelves;
 - replacing or reorganizing Ethernet cables;
 - connecting the Cisco SG350-10 (`sw01`);
-- moving power loads between UPS outputs;
+- moving power loads between `UPS01`, `UPS02`, and `UPS03` outputs;
 - securing small devices;
 - reorganizing storage peripherals;
 - documenting final physical layout.
