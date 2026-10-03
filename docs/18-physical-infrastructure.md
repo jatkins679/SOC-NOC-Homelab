@@ -77,9 +77,17 @@ relationships are visually obvious.
 The power design separates lightweight network infrastructure from heavier
 compute/storage loads.
 
-The earlier rebuild plan assigns the APC 600VA unit to lightweight/network
-infrastructure and the APC Smart-UPS 1000 to compute/storage, subject to actual
-load and runtime testing.
+UPS naming is standardized across the homelab documentation and operations:
+
+```text
+UPS01  older of the two large UPS units
+UPS02  newer of the two large UPS units
+UPS03  small UPS / surge protector
+```
+
+This convention supersedes earlier documentation that used `UPS02` for the
+small UPS. Final device-to-UPS allocation remains subject to actual load and
+runtime testing.
 
 Operational goals:
 
