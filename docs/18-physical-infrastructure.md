@@ -81,8 +81,8 @@ UPS naming is standardized across the homelab documentation and operations:
 
 ```text
 UPS01  older of the two large UPS units
-UPS02  newer of the two large UPS units
-UPS03  small UPS / surge protector
+UPS02  newer of the two large UPS units - APC SMC1000
+UPS03  small UPS / surge protector - APC BE850G2
 ```
 
 This convention supersedes earlier documentation that used `UPS02` for the

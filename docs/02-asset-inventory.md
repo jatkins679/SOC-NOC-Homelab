@@ -312,8 +312,8 @@ The canonical UPS identifiers are:
 | Asset | Description | Planned / Current Use |
 |---|---|---|
 | `UPS01` | Older of the two large UPS units | Large-load power domain; exact attached devices are recorded after load/runtime validation |
-| `UPS02` | Newer of the two large UPS units | Large-load power domain; includes the recently added large UPS; exact attached devices are recorded after load/runtime validation |
-| `UPS03` | Small UPS / surge protector | Lightweight/network/support-device power domain as appropriate |
+| `UPS02` | Newer of the two large UPS units; APC Smart-UPS C1000 (`SMC1000`) | Large-load power domain; includes the recently added large UPS; exact attached devices are recorded after load/runtime validation |
+| `UPS03` | Small UPS / surge protector; APC Back-UPS 850 (`BE850G2`) | Lightweight/network/support-device power domain as appropriate |
 
 These identifiers supersede the earlier convention in which the small UPS could
 be referred to as `UPS02`. The small UPS is now always `UPS03`.
