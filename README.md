@@ -29,6 +29,10 @@ The lab currently includes:
 - Apache log monitoring
 - Controlled SOC detection exercises
 - Shared Proxmox backup storage
+- Docker application host for reverse proxy, dashboards, metrics, and uptime monitoring
+- NetBox IPAM/DCIM service
+- Browser-based remote administration through Apache Guacamole
+- UPS monitoring / graceful-shutdown foundation through `util01`
 
 Managed switching, VLAN segmentation, and OPNsense routing are operational. The Cisco SG350-10 is `sw01` at `192.168.1.21/24`; Gi1-Gi4 connect the Proxmox secondary Ethernet paths and Gi8 connects upstream to the unmanaged flat-LAN segment. Existing `vmbr0` management traffic remains on the TRENDnet switch and `192.168.1.0/24`, while selected guests use tagged VLANs 20-60 through `vmbr1` and OPNsense `fw01`.
 
@@ -46,8 +50,11 @@ Managed switching, VLAN segmentation, and OPNsense routing are operational. The 
 | `mgmt01` | Independent Linux management host | `192.168.1.5` |
 | `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
 | `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
-| `tailscale01` | Dedicated Tailscale subnet router / remote-access gateway | `192.168.1.236` |
+| `docker` | Debian 13 Docker application host (VM 210 on `pve02`) | `192.168.1.174` |
+| `util01` | Debian 13 utility / NUT monitoring host | `192.168.1.243` |
+| `tailscale01` | Dedicated Tailscale subnet router / remote-access gateway | `192.168.1.185` |
 | `fw01` | OPNsense router/firewall (VM 220) | `192.168.1.187` / `10.10.10.1` |
+| `nb01` | NetBox IPAM/DCIM (VM 106 on `pve04`) | `10.10.10.15` |
 | `nms01` | LibreNMS network monitoring | `10.10.40.10` |
 | `wazuh01` | Wazuh SIEM server | `10.10.40.20` (legacy flat NIC retained during audit) |
 | `target01` | Ubuntu monitored/test endpoint | `10.10.60.10` |
@@ -682,6 +689,11 @@ mandatory migration gates are documented in
 - [x] Deploy OPNsense `fw01`
 - [x] Implement VLANs 20-60 and migrate the first guest set
 - [x] Validate Wazuh agent traffic across VLANs
+- [x] Deploy LibreNMS network monitoring on `nms01`
+- [x] Deploy Docker application host `docker` at `192.168.1.174`
+- [x] Deploy Nginx Proxy Manager, Homarr, Uptime Kuma, Grafana, and Prometheus on `docker`
+- [x] Deploy Apache Guacamole browser-based remote access
+- [x] Deploy NetBox IPAM/DCIM as `nb01` on the management VLAN
 
 ### In Progress / Planned
 
@@ -695,7 +707,6 @@ mandatory migration gates are documented in
 - [ ] Create custom Wazuh rules
 - [ ] Test Wazuh Active Response
 - [ ] Tune alerts and reduce false positives
-- [ ] Add network monitoring
 - [ ] Add Zabbix
 - [ ] Expand attack/detection exercises
 - [ ] Document final physical and logical network design
