@@ -42,8 +42,9 @@ system is not presented as though it is already deployed.
 |---|---|---:|---|---|
 | AT&T gateway | AT&T residential fiber gateway | `192.168.1.254` | Default gateway / Internet edge | Supporting infrastructure |
 | `dns01` | Raspberry Pi 3 Model B+ | `192.168.1.20` | Pi-hole DNS / ad blocking | **Operational** |
-| `tailscale01` | Raspberry Pi | `192.168.1.236` | Dedicated Tailscale subnet router; advertises `192.168.1.0/24`; Tailscale IP `100.90.238.71` | **Operational** |
+| `tailscale01` | Raspberry Pi | `192.168.1.185` | Dedicated Tailscale subnet router; advertises `192.168.1.0/24`; Tailscale IP `100.90.238.71` | **Operational** |
 | `mgmt01` | Lenovo IdeaPad 330S / Linux | `192.168.1.5` | Independent management host; SSH/Ansible administration, health monitoring, and operational tooling | **Operational** |
+| `util01` | Older Intel MacBook Pro / Debian 13 | DHCP; `192.168.1.243` observed | Utility host; NUT/UPS monitoring and remote administration support | **Operational / DHCP** |
 | `storage01` | Dell PowerEdge T20 / Windows Server 2025 + attached storage | `192.168.1.208` | SMB/file storage and Proxmox backup support | **Operational** |
 | `sw-home01` | TRENDnet TEG-S160G, unmanaged, 16-port | Not applicable; unmanaged | Current home-network switching | Supporting infrastructure |
 | `sw01` | Cisco SG350-10 managed switch | `192.168.1.21/24` | Managed homelab switching; Proxmox secondary Ethernet paths on Gi1-Gi4; upstream on Gi8 | **Operational** |
@@ -119,10 +120,10 @@ selected workloads were migrated:
 
 | Node | Current workloads |
 |---|---|
-| `pve01` | `dc01`, `win11-01`, `docker`, `sqlserver2025`, `apache-guacamole`, `pialert` |
-| `pve02` | `kali01`, `target01` |
+| `pve01` | `dc01`, `win11-01`, `sqlserver2025`, `apache-guacamole`, `pialert` |
+| `pve02` | `kali01`, `target01`, `docker` |
 | `pve03` | `nms01`, `adsb01`, `wazuh01` |
-| `pve04` | `vulnscan01` |
+| `pve04` | `vulnscan01`, `nb01` |
 
 VM disks remain on each node's local storage. The shared `t-20-backup` CIFS
 target provides backup-based recovery; the cluster does not use Ceph or claim
@@ -204,9 +205,15 @@ Detection / investigation / evidence
 
 | Asset | Type / Platform | Address | Role | Status |
 |---|---|---:|---|---|
+| `docker` | Debian 13 VM / Docker Engine (VM 210) | `192.168.1.174` | Container application host for reverse proxy, dashboards, monitoring, metrics, and ADS-B support services | **Operational** |
+| `nb01` | NetBox VM (VM 106) | `10.10.10.15` | IPAM/DCIM and infrastructure source-of-truth service | **Operational** |
 | `apache-guacamole` | Proxmox LXC | `192.168.1.151` | Browser-based remote access gateway | **Operational** |
 | `sqlserver2025` | Ubuntu LXC / Microsoft SQL Server | DHCP; `192.168.1.165` observed | SQL Server learning / application service | **Operational / DHCP** |
 | `pialert` | Proxmox LXC | DHCP; `192.168.1.225` observed | Network-presence and device-awareness service | **Operational / DHCP** |
+
+The `docker` VM currently hosts the primary containerized application stack, including Nginx Proxy Manager (`80/81/443`), Homarr (`7575`), Uptime Kuma (`3001`), Grafana (`3000`), and Prometheus (`9090`). Prometheus also consumes host metrics from deployed exporters.
+
+NetBox on `nb01` provides IPAM/DCIM documentation for the segmented lab and is reachable on the management VLAN at `10.10.10.15`.
 
 The Guacamole service is used for browser-based remote access to lab systems.
 
@@ -407,10 +414,12 @@ where that monitoring has already been exercised or documented.
 | `10.10.30.160` | `win11-01` |
 | `10.10.40.10` | `nms01` |
 | `192.168.1.151` | `apache-guacamole` |
+| `192.168.1.174` | `docker` |
+| `10.10.10.15` | `nb01` |
 | `10.10.40.20` | `wazuh01` |
 | `192.168.1.208` | `storage01` |
 | `10.10.50.113` | `kali01` |
-| `192.168.1.236` | `tailscale01` |
+| `192.168.1.185` | `tailscale01` |
 | `10.10.60.10` | `target01` |
 | `192.168.1.246` | `adsb01` |
 | `192.168.1.254` | AT&T gateway |
@@ -421,6 +430,7 @@ where that monitoring has already been exercised or documented.
 |---:|---|---|
 | `192.168.1.165` | `sqlserver2025` | DHCP address observed during validation |
 | `192.168.1.225` | `pialert` | DHCP address observed during inventory validation |
+| `192.168.1.243` | `util01` | DHCP address observed; utility/NUT monitoring host |
 
 DHCP-observed addresses should not be treated as permanent reservations unless
 they are later explicitly reserved or converted to static assignments.
@@ -460,6 +470,7 @@ The currently verified lab includes:
 Physical / infrastructure
 ├── AT&T gateway
 ├── mgmt01
+├── util01
 ├── dns01
 ├── tailscale01
 ├── storage01
@@ -492,11 +503,16 @@ Attack / detection
 └── vulnscan01
 
 Additional services
+├── docker
+│   ├── Nginx Proxy Manager
+│   ├── Homarr
+│   ├── Uptime Kuma
+│   ├── Grafana
+│   └── Prometheus
+├── nb01 (NetBox)
 ├── apache-guacamole
 ├── pialert
 └── sqlserver2025
 ```
 
-The next major inventory changes are expected when homelab connections are moved
-to the staged Cisco switch and validated, followed by VLAN segmentation,
-OPNsense, and the NOC monitoring stack.
+The Cisco switch, OPNsense routing, segmented VLANs, LibreNMS, and Uptime Kuma are now operational. The next major inventory changes are expected around completing remaining post-VLAN dependency cleanup, expanding monitoring/security telemetry, and finishing automated UPS-aware graceful shutdown across the lab.
