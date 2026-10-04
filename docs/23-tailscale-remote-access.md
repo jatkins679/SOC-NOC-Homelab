@@ -16,7 +16,7 @@ Internet.
 | Hostname | `tailscale01` |
 | Platform | Raspberry Pi |
 | OS | Debian GNU/Linux 13 (trixie), arm64 |
-| LAN address | `192.168.1.236` |
+| LAN address | `192.168.1.185` |
 | Tailscale address | `100.90.238.71` |
 | Advertised route | `192.168.1.0/24` |
 | Role | Dedicated Tailscale subnet router |
@@ -32,15 +32,14 @@ Remote Tailscale Client
         | encrypted Tailscale tunnel
         v
 tailscale01
-192.168.1.236
+192.168.1.185
         |
         | advertised route 192.168.1.0/24
         v
 Home / Homelab LAN
 ```
 
-This design keeps Tailscale's role separate from the AT&T gateway and from future
-OPNsense/VLAN work.
+This design keeps Tailscale's role separate from the AT&T gateway and from the OPNsense/VLAN routing policy used inside the segmented lab.
 
 ## Design Rationale
 
@@ -75,9 +74,8 @@ The implementation was considered operational after:
 
 - Do not expose Tailscale authentication keys, reusable auth keys, or node secrets.
 - Keep remote-access authorization in the Tailscale control plane.
-- Continue to treat the local LAN as trusted only to the extent justified by the
-  current flat-network design.
-- Re-evaluate advertised routes and ACLs when OPNsense/VLAN segmentation is deployed.
+- Continue to treat the flat `192.168.1.0/24` LAN as trusted only to the extent justified by the current design.
+- The advertised Tailscale route currently covers `192.168.1.0/24`; access to routed lab VLANs is governed separately by OPNsense policy and should not be assumed from the subnet-router advertisement alone.
 
 ## Skills Demonstrated
 
