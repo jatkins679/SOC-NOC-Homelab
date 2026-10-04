@@ -32,6 +32,10 @@ planned services remain excluded until deployed and validated.
 | `pve04` | Proxmox VE cluster node | `192.168.1.13` |
 | `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
 | `dns01` | Pi-hole DNS | `192.168.1.20` |
+| `tailscale01` | Tailscale subnet router | `192.168.1.185` |
+| `util01` | Utility / NUT monitoring host | `192.168.1.243` |
+| `docker` | Docker application host | `192.168.1.174` |
+| `nb01` | NetBox IPAM/DCIM | `10.10.10.15` |
 | `nms01` | LibreNMS network monitoring | `10.10.40.10` |
 | `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
 | `fw01` | OPNsense router/firewall | `192.168.1.187` / `10.10.10.1` |
@@ -64,6 +68,7 @@ The consolidated check validates:
 - Linux infrastructure health on `dns01` and `docker`;
 - Pi-hole FTL status;
 - Docker Engine and Uptime Kuma health;
+- availability of the Nginx Proxy Manager, Homarr, Grafana, Prometheus, and NetBox management services;
 - `storage01` ICMP and SMB reachability;
 - authenticated access to the `ProxmoxBackups` share and `dump` directory.
 
