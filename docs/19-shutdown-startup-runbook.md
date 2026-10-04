@@ -106,7 +106,12 @@ pct list
 
 ## Step 2 — Shut Down Proxmox Nodes
 
-After guests are down, shut down the cluster nodes cleanly.
+After guests are down, shut down the cluster nodes cleanly in the documented maintenance order:
+
+1. `pve04` — `192.168.1.13`
+2. `pve03` — `192.168.1.12`
+3. `pve02` — `192.168.1.11`
+4. `pve01` — `192.168.1.10`
 
 Do not simply remove UPS/power-strip power from running Proxmox hosts.
 
@@ -120,11 +125,13 @@ After compute workloads no longer depend on shared storage:
 
 ## Step 4 — Shut Down Remaining Lab Support Devices
 
-Shut down devices such as `dns01` and other small lab systems that are part of
-the physical work.
+After compute and storage dependencies are down, shut down the remaining support hosts that are part of the physical work:
 
-The resulting household DNS outage is expected during this planned full-lab
-maintenance window.
+1. `dns01` — `192.168.1.20`
+2. `tailscale01` — `192.168.1.185`
+3. `util01` — `192.168.1.243` — shut down last among the support hosts because it provides UPS/NUT monitoring
+
+The resulting household DNS and homelab remote-access outage is expected during this planned full-lab maintenance window.
 
 ## Step 5 — Power Down Switches / Lab Power as Needed
 
@@ -180,15 +187,18 @@ For the current Cisco/OPNsense deployment:
 - confirm `sw01` powers normally;
 - confirm expected link lights;
 - confirm management reachability at `192.168.1.21` when the management path is available;
-- verify Gi1-Gi4 trunks, Gi8 upstream, and the configured VLAN membership;
-- start and validate `fw01` before expecting routed VLAN guests to be reachable.
+- verify Gi1-Gi4 trunks, Gi8 upstream, and the configured VLAN membership.
+
+`fw01` is a Proxmox guest, so its service validation occurs after the Proxmox hosts are available. Do not expect routed VLAN guests to be reachable until `fw01` has started.
 
 ## Step 2 — Start DNS and Storage Dependencies
 
 Power and validate:
 
-- `dns01`;
-- `storage01`;
+- `dns01` (`192.168.1.20`);
+- `tailscale01` (`192.168.1.185`);
+- `util01` (`192.168.1.243`);
+- `storage01` (`192.168.1.208`);
 - Drobo / attached storage.
 
 Confirm basic DNS and SMB/CIFS availability before relying on them from the
@@ -223,7 +233,12 @@ service to remain healthy while Windows Firewall blocks remote access.
 
 ## Step 3 — Start Proxmox Nodes
 
-Power up `pve01` through `pve04`.
+Power up the Proxmox nodes in this order:
+
+1. `pve01` — `192.168.1.10`
+2. `pve02` — `192.168.1.11`
+3. `pve03` — `192.168.1.12`
+4. `pve04` — `192.168.1.13`
 
 Allow each node to complete boot before interpreting cluster state.
 
@@ -257,7 +272,17 @@ qm list
 pct list
 ```
 
-Start any intentionally manual-start workloads in a controlled order.
+Start or validate intentionally manual-start workloads in dependency order:
+
+1. `fw01` — OPNsense routing/firewall
+2. `dc01` — Active Directory / DNS
+3. `docker` — Docker application host at `192.168.1.174`
+4. `nb01` — NetBox at `10.10.10.15`
+5. `nms01` — LibreNMS at `10.10.40.10`
+6. `wazuh01` — Wazuh SIEM
+7. `apache-guacamole` — remote-access gateway at `192.168.1.151`
+
+Then start or verify remaining application/test workloads as needed.
 
 ---
 
@@ -302,6 +327,12 @@ Validate at least:
 
 - [ ] `wazuh01` reachable.
 - [ ] Wazuh services healthy.
+- [ ] `docker` reachable at `192.168.1.174` and key containers are healthy.
+- [ ] Uptime Kuma, Nginx Proxy Manager, Homarr, Grafana, and Prometheus respond as expected.
+- [ ] `nb01` reachable at `10.10.10.15`.
+- [ ] `nms01` reachable at `10.10.40.10` and LibreNMS polling resumes.
+- [ ] `apache-guacamole` reachable at `192.168.1.151`.
+- [ ] `tailscale01` reconnects and advertises the intended subnet route.
 - [ ] Monitored endpoints reconnect.
 - [ ] No important telemetry path was lost during recabling.
 
