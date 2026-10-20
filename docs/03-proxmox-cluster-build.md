@@ -1,53 +1,55 @@
 # Proxmox Cluster Build, Expansion, and Validation
 
-> Historical build record: addresses and planned-state statements in this document describe the environment when the work was performed. Use the asset inventory and current architecture for live values.
+## Overview
 
-## Objective
+One of my main goals for the homelab rebuild was to bring several independent Proxmox hosts together into a cluster.
 
-The initial stage of the homelab rebuild consolidated three Proxmox VE hosts into a single manageable cluster. The cluster was later expanded to four nodes with the addition of `pve04`.
+I originally had three small-form-factor systems running Proxmox. Rather than continue managing them separately, I wanted a single management interface, consistent configuration, and a place to deploy additional networking, monitoring, and security tools.
 
-The goals were to:
+I started with three nodes and later added a fourth, using a repurposed Dell Precision laptop.
 
-- Manage all three Proxmox hosts from one interface.
-- Provide quorum for normal cluster operation.
-- Make VM and container placement easier to manage.
-- Establish a platform for SOC/NOC services such as Wazuh, network monitoring, vulnerability scanning, and isolated security-testing systems.
-- Validate the cluster before making additional infrastructure changes.
+The resulting cluster is named `homelab`.
 
-This environment is a small home lab built from inexpensive mini PCs and repurposed hardware, so the design emphasizes practical administration and learning rather than enterprise-scale high availability.
+This document covers the initial build, validation, and subsequent expansion. Some commands and results are historical; the asset inventory contains the latest documented addressing and system information.
 
-## Cluster Architecture
+---
 
-The resulting Proxmox cluster is named:
+## 1. Cluster Architecture
 
-```text
-homelab
-```
+The cluster consists of four Proxmox VE nodes.
 
-It was initially built with three nodes and now contains four:
+| Host | Management IP | Hardware |
+|---|---|---|
+| `pve01` | `192.168.1.10` | Mini PC |
+| `pve02` | `192.168.1.11` | Mini PC |
+| `pve03` | `192.168.1.12` | Mini PC |
+| `pve04` | `192.168.1.13` | Dell Precision 5550 |
 
-| Node | Management IP |
-|---|---|
-| pve01 | 192.168.1.10 |
-| pve02 | 192.168.1.11 |
-| pve03 | 192.168.1.12 |
-| pve04 | 192.168.1.13 |
+The first three nodes are relatively modest systems, with approximately 16 GB of memory each.
 
-An independent Linux management system, `mgmt01`, is kept outside the cluster for administrative access.
+The Dell Precision has 32 GB of RAM and a six-core, twelve-thread processor, giving me additional capacity for more demanding virtual machines.
 
-DNS is provided by the physical Raspberry Pi system `dns01` at `192.168.1.20`.
+Several supporting systems operate outside the cluster:
 
-Shared backup storage is provided through the Dell PowerEdge T20 storage system.
+- `dns01` (`192.168.1.20`) — Pi-hole DNS on a Raspberry Pi
+- `mgmt01` (`192.168.1.5`) — Independent Linux management workstation
+- `storage01` (`192.168.1.208`) — Windows-based storage and backup server
 
-## Cluster Validation
+Keeping DNS and management access separate from Proxmox reduces the number of services affected when I'm working on the cluster.
 
-After the cluster was assembled, I verified membership and quorum from `pve01`.
+---
+
+## 2. Building the Initial Cluster
+
+The initial cluster used `pve01`, `pve02`, and `pve03`.
+
+Once the nodes were joined, I checked the cluster configuration from `pve01`.
 
 ```bash
 pvecm status
 ```
 
-The cluster reported:
+The recorded output included:
 
 ```text
 Name:             homelab
@@ -62,15 +64,13 @@ Quorum:           2
 Quorate:          Yes
 ```
 
-This confirmed that all three nodes were participating and that the cluster had quorum.
-
-I then checked individual cluster membership:
+I also checked the membership:
 
 ```bash
 pvecm nodes
 ```
 
-The three nodes were present:
+The output listed all three nodes:
 
 ```text
 Node 1   pve01
@@ -78,237 +78,208 @@ Node 2   pve02
 Node 3   pve03
 ```
 
-## Why Quorum Matters
+This confirmed that the nodes recognized one another and that the cluster had quorum.
 
-With three voting nodes and a quorum requirement of two votes, the cluster can lose one node and still retain a majority. This is one reason a three-node design is more useful for cluster administration practice than a two-node design.
+### Why quorum matters
 
-Quorum protects the cluster control plane from conflicting decisions when nodes cannot communicate reliably. In this lab, quorum validation demonstrates that `pve01`, `pve02`, and `pve03` agree on cluster membership and that normal clustered management operations can continue while a majority of votes remains available.
+Proxmox uses quorum to determine whether enough cluster members are communicating to permit normal clustered management operations.
 
-Quorum should not be confused with workload high availability. This lab does not currently use Ceph or Proxmox HA for automatic workload failover; VM and container recovery is handled through local storage, shared backups, and documented restore procedures.
+With three voting nodes, two votes constitute a majority.
 
-## Proxmox Version
+That means one node can become unavailable while the remaining two retain quorum.
 
-The Proxmox version was checked with:
+Quorum is not the same as high availability. My cluster does not automatically restart every failed VM on another node. Most VM disks are stored locally, and I haven't configured Proxmox HA for automatic workload failover.
+
+The cluster gives me centralized management, but recovery still depends on the storage configuration and backup procedures.
+
+---
+
+## 3. Validating the Proxmox Hosts
+
+After building the cluster, I checked the identity, network configuration, storage, and available resources on the nodes.
+
+### Proxmox Version
 
 ```bash
 pveversion
 ```
 
-At validation time, `pve01` was running:
+During the initial three-node validation, `pve01` reported:
 
 ```text
 pve-manager/9.2.2
+Kernel: 7.0.2-6-pve
 ```
 
-with kernel `7.0.2-6-pve`.
+These were the versions at that stage of the project, before the later cluster-wide updates.
 
-## Host Identity
-
-The node hostname and fully qualified hostname were verified:
+### Host Identity
 
 ```bash
 hostname
 hostname -f
 ```
 
-For `pve01`:
+On `pve01`, the recorded values were:
 
 ```text
 pve01
 pve01.home.arpa
 ```
 
-Using consistent node names is important because Proxmox cluster membership, certificates, storage configuration, and management all depend on stable host identity.
+Consistent hostnames and working name resolution are important because cluster communication and administration depend on stable node identities.
 
-## Network Validation
-
-The active interfaces were checked with:
+### Network Configuration
 
 ```bash
 ip -br addr
-```
-
-On `pve01`, the Proxmox bridge `vmbr0` carried the management address:
-
-```text
-192.168.1.10/24
-```
-
-The routing table was then verified:
-
-```bash
 ip route
 ```
 
-The default route was:
+At the time, `pve01` used:
 
 ```text
-default via 192.168.1.254 dev vmbr0
+Interface:       vmbr0
+Management IP:   192.168.1.10/24
+Default gateway: 192.168.1.254
 ```
 
-and the local network was:
+The management network was `192.168.1.0/24`, with the AT&T gateway at `192.168.1.254`.
 
-```text
-192.168.1.0/24
-```
+The network has since evolved to include managed switching, additional Proxmox bridges, VLAN-tagged guests, and OPNsense routing.
 
-This confirmed that the management bridge and default gateway were operating normally.
+Those changes are covered in the [VLAN and managed switching documentation](04-network-vlans.md).
 
-## Storage Validation
+---
 
-Cluster storage was checked using:
+## 4. Storage Configuration
+
+I checked the storage recognized by Proxmox:
 
 ```bash
 pvesm status
 ```
 
-The active storage on `pve01` included:
+The configured storage included:
 
-```text
-local
-local-lvm
-t-20-backup
-```
+| Storage | Purpose |
+|---|---|
+| `local` | ISOs, templates, and other local files |
+| `local-lvm` | Local VM and container disks |
+| `t-20-backup` | Shared backup storage |
 
-`local` is directory-based storage used for files such as ISO images and templates. `local-lvm` is LVM-thin storage used primarily for VM and container virtual disks.
+The shared backup target is hosted by `storage01`, a Dell PowerEdge T20 running Windows Server.
 
-`t-20-backup` is CIFS-backed shared storage hosted by the Dell PowerEdge T20 and is used for Proxmox backups.
+It is presented to Proxmox using SMB/CIFS and backed by attached storage.
 
-At the time of validation, all three storage entries reported an active state.
+This gives the nodes access to a common backup destination without requiring the VM disks themselves to be shared across the cluster.
 
-## Existing Workloads
+I deliberately kept the initial storage design relatively simple.
 
-Local virtual machines were inspected with:
+---
+
+## 5. Checking Workloads and Resources
+
+I used the Proxmox command-line tools to inspect the existing virtual machines and containers.
 
 ```bash
 qm list
-```
-
-Containers were inspected with:
-
-```bash
 pct list
 ```
 
-Existing workloads on the lab included Windows/Linux virtual machines and containers supporting services such as:
-
-- Docker
-- Apache Guacamole
-- SQL Server
-- network/security testing
-- vulnerability scanning
-
-The objective was not to eliminate existing useful workloads during the cluster rebuild, but to establish a cleaner management platform around them.
-
-## Cluster Resource Check
-
-I used the Proxmox API command-line interface to confirm the status and resource utilization of all three nodes:
+To view all cluster nodes through the Proxmox API:
 
 ```bash
 pvesh get /nodes
 ```
 
-The results showed:
+The initial results showed all three nodes online.
 
-```text
-pve01   online
-pve02   online
-pve03   online
-```
-
-All three nodes had approximately 15.4 GiB of RAM and four logical CPUs available to Proxmox.
-
-Cluster-wide VM and container resource utilization was also checked:
+I also checked the VMs and containers across the cluster:
 
 ```bash
 pvesh get /cluster/resources --type vm
 ```
 
-This provided a single view of running QEMU virtual machines and LXC containers across the cluster.
+This provided a consolidated view rather than requiring me to inspect each Proxmox host individually.
 
-## Memory Validation
-
-Memory usage on the host was checked with:
+For local memory information:
 
 ```bash
 free -h
 ```
 
-At the time of validation, `pve01` had approximately:
+At the time of the initial validation, `pve01` had approximately 15 GiB of RAM, with around 11 GiB available and 8 GiB of configured swap.
 
-```text
-15 GiB total RAM
-11 GiB available
-8 GiB swap
-```
+The resource checks helped me decide where additional services could run without concentrating everything on one node.
 
-This provided sufficient headroom for additional lightweight SOC/NOC services while still leaving capacity for the existing workloads.
+---
 
-## Design Decision: No Ceph
+## 6. Why I Didn't Deploy Ceph
 
-Ceph is a distributed storage system that spreads data across multiple machines. In a Proxmox cluster it can provide shared VM storage and redundancy, but it also needs sufficient disks, network bandwidth, and memory to operate well.
+I considered using Ceph but decided against it.
 
-I chose not to deploy Ceph on this cluster.
+Ceph is distributed storage software that can store redundant copies or encoded portions of data across multiple systems. In a Proxmox environment, it can provide shared storage for VMs and support more flexible workload placement.
 
-Although Proxmox supports Ceph for distributed storage and high availability, these nodes are small N95/N97-class systems with limited CPU, memory, network interfaces, and local storage.
+It also requires memory, storage capacity, and network bandwidth.
 
-Adding Ceph would consume resources without providing enough benefit for this lab.
+My original Proxmox nodes were small, low-power mini PCs with limited local disks and network connections.
 
-Instead:
+For this lab, the additional complexity and resource consumption weren't justified.
 
-- VM disks remain on local Proxmox storage.
-- Backups are stored on the shared T20 storage server.
-- Recovery is handled through tested Proxmox backup and restore procedures.
+Instead, I use:
 
-This is more appropriate for the scale and purpose of the environment.
+- Local storage for running VM and container disks
+- Shared storage for backups
+- Staggered backup schedules
+- Restore testing to verify recovery procedures
 
+This doesn't provide the same availability as a properly designed Ceph environment, but it's a more reasonable fit for the hardware and my current objectives.
 
-## Four-Node Expansion - August 2026
+---
 
-The original three-node validation above is retained as build history. The
-current cluster was expanded by installing Proxmox VE on a repurposed Dell
-Precision 5550 and joining it as `pve04`.
+## 7. Expanding to Four Nodes
 
-`pve04` provides substantially more compute capacity than the three small-form-
-factor nodes:
+In August 2026, I added a Dell Precision 5550 laptop as `pve04`.
 
-| Item | Verified value |
+The laptop was available for repurposing and had substantially more compute capacity than the existing mini PCs.
+
+| Component | Configuration |
 |---|---|
-| Model | Dell Precision 5550 |
-| Processor | Intel Core i7-10850H; 6 cores / 12 threads |
+| Processor | Intel Core i7-10850H |
+| CPU | 6 cores / 12 threads |
 | Memory | 32 GiB |
-| Local storage | 256 GB Samsung NVMe |
-| Management address | `192.168.1.13/24` |
-| Network adapter | Realtek RTL8153B USB Gigabit Ethernet using the Linux `r8152` driver |
+| Storage | 256 GB NVMe SSD |
+| Network | USB Gigabit Ethernet, Realtek RTL8153B |
+| Proxmox IP | `192.168.1.13` |
 
-The mobile-workstation chassis does not provide a built-in RJ45 port, so the
-current management bridge uses a USB Gigabit Ethernet adapter. A second adapter
-may later separate management and lab traffic after the managed Cisco switch is
-installed. That future design is not represented as operational yet.
+### Preparing the New Host
 
-Before the node joined the cluster, hostnames were made resolvable on every node
-through consistent `/etc/hosts` entries. The Proxmox repositories were also
-changed from the subscription-only enterprise repositories to the supported
-no-subscription repository used by this lab.
+Before adding `pve04`, I checked hostname resolution across the existing nodes and standardized the repository configuration.
 
-All four nodes were then updated and rebooted one at a time. The verified common
-software state was:
+The cluster uses the Proxmox no-subscription repository.
+
+I then updated the hosts and rebooted them individually rather than taking the entire cluster offline.
+
+The recorded common software state following these updates was:
 
 ```text
 pve-manager/9.2.10
-kernel 7.0.14-12-pve
+Kernel: 7.0.14-12-pve
 ```
 
-Rolling maintenance preserved cluster quorum while avoiding a simultaneous
-outage of all hosts.
+### Joining and Validating `pve04`
 
-After `pve04` joined, cluster validation reported:
+After joining the fourth node, I checked cluster status again.
+
+The recorded result included:
 
 ```text
 Name:             homelab
 Config Version:   4
 Transport:        knet
 Secure auth:      on
+
 Nodes:            4
 Expected votes:   4
 Total votes:      4
@@ -316,133 +287,114 @@ Quorum:           3
 Quorate:          Yes
 ```
 
-With four voting nodes, the cluster requires three votes. It can therefore
-tolerate one unavailable node while retaining quorum. Quorum still does not
-provide automatic VM failover because the lab uses local VM disks and does not
-run Proxmox HA with shared or distributed production storage.
+With four voting nodes, quorum requires three votes.
 
-Two workloads were moved offline using verified backups as recovery protection:
+The cluster can still tolerate one unavailable node, but losing two nodes would leave it without quorum.
 
-| Workload | VM ID | Previous node | Current node | Result |
-|---|---:|---|---|---|
-| `vulnscan01` | 320 | `pve03` | `pve04` | Guest agent responded; address remained `192.168.1.247` |
-| `wazuh01` | 500 | `pve01` | `pve03` | Guest agent responded; address remained `192.168.1.206` |
+Adding the fourth node increased available compute capacity, not the number of node failures the cluster could tolerate while maintaining a majority.
 
-This placement moves vulnerability-scanning demand to the higher-capacity
-Precision host and reduces workload concentration on `pve01`.
+---
 
-Startup policy was reviewed after migration. Core services start automatically,
-while interactive testing and resource-intensive lab workloads remain manual:
+## 8. Rebalancing Workloads
 
-| Node | Workload | Startup policy |
-|---|---|---|
-| `pve01` | `dc01` | Automatic; order 1 |
-| `pve01` | `apache-guacamole` | Automatic; order 2 |
-| `pve01` | `pialert` | Automatic; order 3 |
-| `pve03` | `wazuh01` | Automatic; order 1 |
-| Various | Kali, target, vulnerability scanner, Windows endpoint, Docker, SQL Server | Manual unless needed |
+After `pve04` joined, I moved selected workloads to make better use of the available hardware.
 
-Because `pve04` is a laptop-form-factor host, systemd lid actions were set to
-`ignore` and sleep, suspend, hibernate, and hybrid-sleep targets were masked.
-A closed-lid validation confirmed that the host remained reachable and retained
-cluster membership.
+Two of the documented migrations were:
 
-Detailed commands, validation output, and the final placement record are in
-[`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md).
+| VM | VMID | From | To |
+|---|---:|---|---|
+| `vulnscan01` | 320 | `pve03` | `pve04` |
+| `wazuh01` | 500 | `pve01` | `pve03` |
 
-## Current Result
+The migrations used offline moves with backups available as recovery protection.
 
-The lab now has a functioning four-node Proxmox cluster with:
+Afterward, I checked guest-agent connectivity and confirmed that the guests retained their expected addresses.
 
-- Four online nodes.
-- Three-vote quorum verified.
-- Centralized Proxmox management.
-- Shared backup storage.
-- Existing VMs and containers retained.
-- Independent DNS and management systems.
-- Capacity for additional SOC/NOC workloads.
+These placements reflect the August expansion work, not necessarily the latest VM placement or operational state.
 
-The cluster now provides the virtualization foundation for the active Wazuh SIEM environment and for remaining work such as network monitoring, network segmentation, and additional controlled security-testing systems.
+The detailed migration record is available in:
 
-## Commands Used for Validation
+[Proxmox Node Expansion and Workload Rebalancing](16-proxmox-node-expansion.md)
 
-```bash
-pvecm status
-pvecm nodes
+---
 
-pveversion
+## 9. Running a Laptop as a Proxmox Node
 
-hostname
-hostname -f
+Using a laptop as a virtualization host required a few additional changes.
 
-ip -br addr
-ip route
+The Precision 5550 doesn't have a built-in RJ45 Ethernet port, so I use a USB Gigabit Ethernet adapter.
 
-pvesm status
+I also needed to prevent the machine from suspending when its lid was closed.
 
-qm list
-pct list
+I configured systemd to ignore lid-close actions and masked the sleep, suspend, hibernate, and hybrid-sleep targets.
 
-free -h
+After making those changes, I tested the system with the lid closed.
 
-pvesh get /nodes
-pvesh get /cluster/resources --type vm
-```
+It remained accessible and retained cluster membership.
 
-## Skills Demonstrated
+The laptop isn't intended to be a highly available enterprise server, but it provides useful compute capacity for a homelab.
 
-- Proxmox VE administration
-- Multi-node cluster management
-- Cluster quorum validation
-- Linux networking
-- Linux command-line administration
-- Virtual machine and LXC management
-- Shared storage administration
-- Capacity planning
-- Backup-oriented infrastructure design
-- Infrastructure documentation
+---
 
-## Status
+## 10. Startup and Recovery
 
-- [x] Initial three Proxmox nodes installed and online
-- [x] Cluster `homelab` created
-- [x] `pve01`, `pve02`, and `pve03` joined to the initial cluster
-- [x] `pve04` installed and joined as the fourth node
-- [x] Four-node quorum verified
-- [x] All nodes standardized on Proxmox VE 9.2.10 and kernel 7.0.14-12-pve
-- [x] `vulnscan01` and `wazuh01` migrated and validated
-- [x] Essential-service startup policy reviewed
-- [x] Cluster management verified from the Proxmox interface
-- [x] Management addressing verified
-- [x] Shared `t-20-backup` storage verified
-- [x] Existing VMs and containers visible across the cluster
-- [x] Cluster resource utilization reviewed
-- [x] Backup strategy retained
-- [x] Ceph intentionally excluded from the design
+I reviewed which guests should start automatically when their Proxmox host boots.
 
-## Evidence / Follow-Up
+Services that support the rest of the environment, such as the domain controller and security monitoring, are more useful when they start automatically.
 
-The cluster is operational and validated.
+Testing systems, attack targets, and other resource-intensive workloads can remain stopped until needed.
 
-Additional portfolio evidence can be added later if useful:
+This helps keep resource usage under control and makes recovery after a power interruption more predictable.
 
-- Screenshot of the four-node Proxmox cluster
-- Screenshot of cluster storage status
-- Screenshot of cluster resource view
-- Network diagram showing `pve01`, `pve02`, `pve03`, `mgmt01`, `dns01`, and `storage01`
+Because the lab relies heavily on local VM storage, the backup and recovery process remains important even with multiple cluster nodes.
 
-These items are supporting evidence rather than blockers for completion.
+Related documentation:
 
-## Next Phase
+- [Proxmox Backup and Disaster-Recovery Preparation](01-proxmox-backup.md)
+- [Proxmox Backup and Restore Validation](21-proxmox-backup-restore-validation.md)
+- [Homelab Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
 
-The Proxmox cluster now serves as the virtualization foundation for the SOC/NOC environment.
+---
 
-Wazuh SIEM is already deployed and operational; its implementation is documented separately in `docs/06-wazuh-siem.md`.
+## 11. Commands Reference
 
-The next major infrastructure work includes:
+The principal commands used to inspect and validate the cluster were:
 
-- Network monitoring
-- Cisco managed-switch integration
-- VLAN segmentation
-- OPNsense routing/firewalling
-- Additional monitored endpoints and security-testing systems
+| Command | Purpose |
+|---|---|
+| `pvecm status` | Check cluster quorum and membership |
+| `pvecm nodes` | List cluster members |
+| `pveversion` | Check the installed Proxmox version |
+| `hostname` | Show the short hostname |
+| `hostname -f` | Show the fully qualified hostname |
+| `ip -br addr` | Inspect addresses and interfaces |
+| `ip route` | Inspect the routing table |
+| `pvesm status` | Check configured Proxmox storage |
+| `qm list` | List virtual machines |
+| `pct list` | List LXC containers |
+| `pvesh get /nodes` | Inspect cluster node resources |
+| `pvesh get /cluster/resources --type vm` | Inspect cluster-wide VMs and containers |
+| `free -h` | Check local memory usage |
+
+---
+
+## 12. Result
+
+The homelab now has a four-node Proxmox cluster providing a common management platform for my virtual machines and containers.
+
+The cluster has been validated with four voting nodes and a three-vote quorum requirement.
+
+DNS, management, and shared backup storage are provided by systems outside the cluster.
+
+The design does not include Ceph or automatic VM high availability, but it provides enough flexibility for the networking, security monitoring, and systems-administration work I'm doing.
+
+The cluster has become the foundation for the rest of the lab, including Active Directory, Wazuh, Docker, LibreNMS, OPNsense, and the security-testing environment.
+
+The next phase of the project involves expanding the network configuration, managed switching, VLAN segmentation, and additional monitoring services.
+
+## Related Documentation
+
+- [Asset Inventory](02-asset-inventory.md)
+- [Managed Switching and VLAN Design](04-network-vlans.md)
+- [Proxmox Node Expansion](16-proxmox-node-expansion.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
