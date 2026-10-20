@@ -20,7 +20,7 @@ loss and to verify dependencies in a deliberate order during recovery.
 
 ```text
 UPS01  older of the two large UPS units
-UPS02  newer of the two large UPS units - APC SMC1000
+UPS02  newer of the two large UPS units - APC SUA1000
 UPS03  small UPS / surge protector - APC BE850G2
 ```
 
