@@ -1,131 +1,163 @@
 # Windows Endpoint Telemetry
 
-## Objective
+## Overview
 
-Add a Windows 11 endpoint to the SOC/NOC homelab and configure it to produce security telemetry useful for SIEM investigation.
+After getting Wazuh running and enrolling a Linux endpoint, I wanted to add Windows monitoring to the homelab.
 
-The goal was to build a Windows endpoint that could be monitored with Wazuh and provide higher-fidelity process and PowerShell visibility through Sysmon and PowerShell Script Block Logging.
+I created a Windows 11 Pro virtual machine and configured it to send security events to Wazuh.
 
-## Lab System
+The initial goal was to get the Windows agent working. I then added Sysmon and PowerShell Script Block Logging to collect more detailed information about process execution, scripts, and changes to the system.
 
-| System | Role | Address during testing |
+I also wanted to generate some controlled activity and see whether the resulting events made it all the way into the SIEM.
+
+The work described here began when the Windows VM was a standalone workstation. The system was subsequently joined to the `corp.home.arpa` Active Directory domain.
+
+---
+
+## 1. Lab Configuration
+
+| System | Address | Role |
 |---|---|---|
-| `win11-01` | Windows 11 Pro monitored endpoint | `10.10.30.160/24` (DHCP) |
-| `wazuh01` | Wazuh SIEM server | `10.10.40.20` |
-| `dns01` | Pi-hole DNS | `192.168.1.20` |
+| `win11-01` | `10.10.30.160` | Windows 11 Pro endpoint |
+| `wazuh01` | `10.10.40.20` | Wazuh SIEM |
+| `dns01` | `192.168.1.20` | Pi-hole DNS |
+| `dc01` | `10.10.20.10` | Active Directory domain controller |
 
-`win11-01` was created as a Proxmox VM and initially configured with a local administrator account. It remains a standalone workstation pending the Active Directory phase of the lab.
+`win11-01` runs as a Proxmox virtual machine.
 
-## Proxmox Guest Integration
+It uses VLAN 30 for the USERS network, while `wazuh01` uses VLAN 40 for security monitoring.
 
-The Windows VM uses the VirtIO driver ISO and Proxmox QEMU Guest Agent.
+OPNsense routes the permitted Wazuh agent traffic between those VLANs.
 
-The QEMU Guest Agent was installed from the VirtIO ISO using the 64-bit Windows installer in the `guest-agent` directory. Service status was verified with:
+---
+
+## 2. Proxmox Guest Integration
+
+I installed the Windows VirtIO drivers and QEMU Guest Agent to improve integration between the Windows VM and Proxmox.
+
+The guest agent installer was included on the VirtIO driver ISO.
+
+After installation, I checked the Windows service:
 
 ```powershell
 Get-Service QEMU-GA
 ```
 
-The hostname was verified as:
+With the guest agent running, Proxmox was able to report the Windows guest's IPv4 address and other information.
 
-```text
-win11-01
+This gave me another way to check the VM's operating state from the hypervisor.
+
+---
+
+## 3. Installing the Wazuh Agent
+
+I configured the Windows Wazuh agent to use `wazuh01` (`10.10.40.20`) as its manager.
+
+The installation didn't work on my first attempt.
+
+### Diagnosing the Installation Failure
+
+I checked whether the service had been created:
+
+```powershell
+Get-Service *wazuh*
 ```
 
-After the guest agent was operational, Proxmox reported the guest IPv4 address correctly.
+Then checked the expected installation directory:
 
-## Wazuh Agent Deployment
+```powershell
+Test-Path "C:\Program Files (x86)\ossec-agent"
+```
 
-The Windows Wazuh agent was deployed with `wazuh01` as the manager and `win11-01` as the agent name.
+The directory check returned:
 
-Post-installation validation included:
+```text
+False
+```
+
+The Wazuh service was also missing.
+
+That established that the problem wasn't simply a stopped service. The agent hadn't actually been installed.
+
+After reinstalling the MSI, the Windows service appeared.
+
+I then encountered a permissions problem when trying to control the service from PowerShell. Reopening PowerShell as Administrator resolved that issue.
+
+### Verifying the Agent
+
+I checked the service:
 
 ```powershell
 Get-Service WazuhSvc
 ```
 
-and network connectivity to the Wazuh manager:
+Then tested connectivity to the manager:
 
 ```powershell
 Test-NetConnection 10.10.40.20 -Port 1514
 ```
 
-The connectivity test returned:
+The result included:
 
 ```text
 TcpTestSucceeded : True
 ```
 
-The Wazuh dashboard subsequently showed `win11-01` as an active monitored endpoint.
+Finally, I checked the Wazuh dashboard and confirmed that `win11-01` appeared as an active agent.
 
-## Wazuh Agent Installation Troubleshooting
+These were separate checks: installation, service state, TCP connectivity, and successful SIEM enrollment.
 
-The first deployment attempt did not create the Windows service.
+A successful connection to port 1514 alone wouldn't have established that the endpoint was actively sending useful events.
 
-The absence of the agent was confirmed with:
+---
 
-```powershell
-Get-Service *wazuh*
-Test-Path "C:\Program Files (x86)\ossec-agent"
-```
+## 4. Installing Sysmon
 
-The path check returned `False`, confirming that the agent had not been installed rather than merely failing to start.
+Windows already records many useful events, but I wanted more detailed information about processes and system activity.
 
-The MSI was then installed successfully and the service became available. An additional startup failure was traced to the PowerShell session not being elevated. After reopening PowerShell as Administrator, the service started successfully.
+For that, I installed Sysmon from Microsoft's Sysinternals tools.
 
-This troubleshooting sequence reinforced the difference between:
-
-```text
-installer downloaded
-        ↓
-agent installed
-        ↓
-Windows service created
-        ↓
-service running
-        ↓
-manager reachable
-        ↓
-agent active in SIEM
-```
-
-## Sysmon Installation
-
-Sysmon was added to increase Windows endpoint visibility beyond the default event logs.
-
-A working directory was created:
+I created a working directory:
 
 ```powershell
 New-Item -ItemType Directory -Path C:\Tools\Sysmon -Force
 cd C:\Tools\Sysmon
 ```
 
-The Microsoft Sysinternals package was downloaded and extracted, and Sysmon was installed with a security-focused XML configuration:
+After downloading and extracting Sysmon, I installed it with an XML configuration:
 
 ```powershell
 .\Sysmon64.exe -accepteula -i .\sysmonconfig.xml
 ```
 
-The service and event channel were verified with:
+I checked the service:
 
 ```powershell
 Get-Service *sysmon*
 ```
 
+And inspected recent events:
+
 ```powershell
 Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5
 ```
 
-## Wazuh Sysmon Collection
+The Sysmon Operational log was producing events.
 
-Before editing the Wazuh configuration, the original file was backed up:
+---
+
+## 5. Sending Sysmon Events to Wazuh
+
+The next step was to have the Windows Wazuh agent collect the Sysmon event channel.
+
+Before changing the configuration, I backed up the agent's existing `ossec.conf` file:
 
 ```powershell
 Copy-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" `
           "C:\Program Files (x86)\ossec-agent\ossec.conf.pre-sysmon"
 ```
 
-The following event channel was added to `ossec.conf`:
+I then added the Sysmon event channel to the Wazuh agent configuration:
 
 ```xml
 <localfile>
@@ -134,46 +166,50 @@ The following event channel was added to `ossec.conf`:
 </localfile>
 ```
 
-The Wazuh service was restarted:
+After editing the configuration, I restarted the Wazuh service:
 
 ```powershell
 Restart-Service WazuhSvc
 ```
 
-## Sysmon Detection Validation
+This allowed the agent to forward Sysmon events to the Wazuh manager for analysis.
 
-Controlled PowerShell activity was generated:
+---
+
+## 6. Testing PowerShell Process Detection
+
+To generate a straightforward process event, I executed:
 
 ```powershell
 powershell.exe -NoProfile -Command "Get-Date"
 ```
 
-Sysmon recorded the activity as Event ID `1` (Process Create).
+Sysmon recorded the process execution as Event ID 1.
 
-Wazuh generated:
+Wazuh generated an alert:
 
-```text
-Rule ID:       92027
-Rule Level:    4
-Description:   Powershell process spawned powershell instance
-```
+| Field | Value |
+|---|---|
+| Rule ID | `92027` |
+| Level | 4 |
+| Description | Powershell process spawned powershell instance |
+| MITRE ATT&CK | `T1059.001` — PowerShell |
 
-MITRE ATT&CK mapping:
+The alert included useful details such as the process image, command line, parent process, user context, integrity level, process identifiers, and executable hashes.
 
-```text
-T1059.001 - PowerShell
-Tactic: Execution
-```
+The event demonstrated that Windows process activity was being recorded locally and received by Wazuh.
 
-The alert preserved useful endpoint evidence including the PowerShell image, command line, parent process, user context, integrity level, process identifiers, and executable hashes.
+![Windows Sysmon PowerShell detection — Rule 92027](../evidence/wazuh/08-windows-sysmon-powershell-rule-92027.png)
 
-Evidence:
+---
 
-![Windows Sysmon PowerShell detection - Rule 92027](../evidence/wazuh/08-windows-sysmon-powershell-rule-92027.png)
+## 7. Enabling PowerShell Script Block Logging
 
-## PowerShell Script Block Logging
+Sysmon provided process execution information, but I also wanted visibility into the PowerShell commands and scripts being executed.
 
-PowerShell Script Block Logging was enabled through Local Group Policy:
+I enabled PowerShell Script Block Logging through Local Group Policy.
+
+The setting is located at:
 
 ```text
 Computer Configuration
@@ -183,20 +219,24 @@ Computer Configuration
   → Turn on PowerShell Script Block Logging
 ```
 
-The policy state was verified directly:
+I checked the resulting policy configuration:
 
 ```powershell
 Get-ItemProperty `
   "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging"
 ```
 
-Expected result:
+The important value was:
 
 ```text
 EnableScriptBlockLogging : 1
 ```
 
-The Wazuh agent was also configured to collect the PowerShell Operational event channel:
+Script Block Logging records events in the Windows PowerShell Operational event channel, including Event ID 4104.
+
+### Wazuh Event Collection
+
+I configured the Wazuh agent to collect that event channel:
 
 ```xml
 <localfile>
@@ -205,9 +245,15 @@ The Wazuh agent was also configured to collect the PowerShell Operational event 
 </localfile>
 ```
 
-## Script Block Detection Validation
+This added PowerShell script telemetry to the existing Windows endpoint monitoring.
 
-A controlled registry modification was generated from PowerShell:
+---
+
+## 8. Testing a Registry Modification
+
+For the next exercise, I wanted to generate a PowerShell command that changed the registry and check whether the activity would produce a Wazuh alert.
+
+I used:
 
 ```powershell
 New-ItemProperty `
@@ -216,9 +262,11 @@ New-ItemProperty `
   -Value 2
 ```
 
-Windows recorded the command as PowerShell Operational Event ID `4104`.
+The command created a registry value.
 
-The event was verified locally with:
+Windows recorded the PowerShell activity as Event ID 4104.
+
+I checked the local events with:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{
@@ -227,31 +275,24 @@ Get-WinEvent -FilterHashtable @{
 } -MaxEvents 10
 ```
 
-Wazuh then generated:
+Wazuh generated:
 
-```text
-Rule ID:       91843
-Rule Level:    3
-Description:   Powershell executed "New-ItemProperty -Path".
-               Possible addition of new item to registry
-```
+| Field | Value |
+|---|---|
+| Rule ID | `91843` |
+| Level | 3 |
+| Description | Powershell executed `New-ItemProperty -Path`; possible registry item addition |
+| MITRE ATT&CK | `T1059.001`, `T1112` |
 
-MITRE ATT&CK mapping:
+The activity mapped to PowerShell execution and registry modification.
 
-```text
-T1059.001 - PowerShell
-T1112     - Modify Registry
+This was a controlled test, not an actual attack, but it demonstrated how the telemetry and detection rules behaved.
 
-Tactics:
-Execution
-Defense Evasion
-```
+![PowerShell registry modification detection — Rule 91843](../evidence/wazuh/09-powershell-registry-rule-91843.png)
 
-Evidence:
+### Removing the Test Value
 
-![PowerShell registry modification detection - Rule 91843](../evidence/wazuh/09-powershell-registry-rule-91843.png)
-
-The test value was removed after validation:
+After verifying the event, I removed the registry value:
 
 ```powershell
 Remove-ItemProperty `
@@ -259,54 +300,73 @@ Remove-ItemProperty `
   -Name "NoofAlerts"
 ```
 
-## Telemetry Path Validated
+That returned the test location to its prior state.
+
+---
+
+## 9. Following the Telemetry
+
+The Windows experiments established a working event pipeline:
 
 ```text
 Windows activity
-      ↓
-Sysmon / PowerShell Operational logs
-      ↓
+        |
+        v
+Sysmon / PowerShell event logs
+        |
+        v
 Wazuh agent on win11-01
-      ↓
-wazuh01
-      ↓
-Wazuh detection rule
-      ↓
-MITRE ATT&CK mapping
-      ↓
+        |
+        v
+Wazuh manager — wazuh01
+        |
+        v
+Wazuh detection rules
+        |
+        v
+Security alert
+        |
+        v
 Threat Hunting investigation
 ```
 
-## Skills Demonstrated
+I checked both the local Windows events and the resulting Wazuh alerts.
 
-- Windows 11 endpoint administration
-- Proxmox Windows guest integration
-- VirtIO drivers and QEMU Guest Agent
-- Windows service troubleshooting
-- Wazuh Windows-agent deployment
-- Endpoint-to-SIEM connectivity validation
-- Sysmon deployment and validation
-- Sysmon Event ID 1 process analysis
-- PowerShell Script Block Logging
-- Windows Event ID 4104 analysis
-- Wazuh event-channel configuration
-- MITRE ATT&CK interpretation
-- SOC alert investigation
-- Evidence capture and validation
-- Troubleshooting and root-cause isolation
+That distinction is important because it demonstrates more than just the fact that the endpoint agent was connected.
 
-## Current Status
+It shows that the intended activity was recorded, forwarded, interpreted, and available for investigation.
 
-- [x] Windows 11 Pro VM created
-- [x] Hostname set to `win11-01`
-- [x] QEMU Guest Agent installed and running
-- [x] Wazuh Windows agent installed and active
-- [x] Wazuh manager connectivity on TCP 1514 verified
-- [x] Sysmon installed and producing events
-- [x] Sysmon Operational channel collected by Wazuh
-- [x] Wazuh Rule 92027 validated
-- [x] PowerShell Script Block Logging enabled
-- [x] Event ID 4104 validated locally
-- [x] PowerShell Operational channel collected by Wazuh
-- [x] Wazuh Rule 91843 validated
-- [ ] Join `win11-01` to Active Directory after `dc01` is promoted
+---
+
+## 10. Active Directory Integration
+
+The Windows endpoint was initially configured with a local administrator account.
+
+I subsequently deployed Windows Server 2025 Active Directory and joined `win11-01` to the `corp.home.arpa` domain.
+
+That expanded the kinds of events I could monitor to include domain logon and account-management activity.
+
+The Active Directory deployment and its Wazuh detection exercises are documented separately.
+
+[Active Directory Lab](10-active-directory-lab.md)
+
+---
+
+## 11. Result
+
+The Windows endpoint successfully generated security telemetry through Sysmon and PowerShell Script Block Logging.
+
+Wazuh detected the controlled PowerShell process execution and registry modification, using rules `92027` and `91843`.
+
+The work included some practical troubleshooting along the way, particularly determining why the Wazuh agent hadn't installed and identifying the permissions needed to manage its Windows service.
+
+The endpoint is now part of the broader Windows and Active Directory monitoring environment.
+
+Additional exercises involving account management and security events are documented in the Wazuh detection labs and Active Directory documentation.
+
+## Related Documentation
+
+- [Wazuh SIEM Deployment](06-wazuh-siem.md)
+- [Wazuh Attack Detection Labs](09-attack-detection-labs.md)
+- [Active Directory Lab](10-active-directory-lab.md)
+- [SOC Alert Triage Playbook](12-soc-alert-triage-playbook.md)
