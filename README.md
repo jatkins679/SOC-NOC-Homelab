@@ -1,5 +1,33 @@
 # SOC/NOC Homelab
 
+## Start Here
+
+This started as a collection of “junk” equipment in my garage. I wanted to see what I could do with it all. It has grown into a working lab for networking, systems administration, and security monitoring.
+
+If you only have a few minutes, these three examples are a good place to start:
+
+### Getting Wazuh Working
+
+The first installation ran into a disk-space problem even though the VM had plenty of virtual disk capacity. I traced the problem through the storage layers, worked through the failed deployment, and got the monitoring system running.
+
+[Wazuh deployment and troubleshooting](docs/06-wazuh-siem.md)
+
+### Testing a Backup by Restoring It
+
+I restored a backup of my Docker VM into a temporary guest, kept it isolated from the network, and checked that Docker and Uptime Kuma worked inside it.
+
+[Backup restore test](docs/21-proxmox-backup-restore-validation.md)
+
+### Figuring Out Why Remote Access Failed
+
+While traveling, I could not reach my home server. The server was running, but the network where I was staying used the same subnet as my home LAN. I checked the routes, used an SSH tunnel to get in, and then verified direct access through Tailscale.
+
+[Remote-access troubleshooting](docs/23-tailscale-remote-access.md)
+
+For the broader picture, see the [asset inventory](docs/02-asset-inventory.md) and [network layout](docs/04-network-vlans.md). For the security exercises, see the [Wazuh detection labs](docs/09-attack-detection-labs.md).
+
+---
+
 A hands-on infrastructure, networking, and security-monitoring lab built from repurposed hardware, small-form-factor systems, Raspberry Pis, Proxmox VE, Linux, and open-source security tools.
 
 The goal of this project is to document what I actually build, the commands I use, the problems I run into, how I troubleshoot them, and what I learn from the process.
@@ -708,10 +736,16 @@ mandatory migration gates are documented in
 - [ ] Test Wazuh Active Response
 - [ ] Tune alerts and reduce false positives
 - [ ] Add Zabbix
+- [ ] Deploy OpenVAS, investigate findings on `target01` (`10.10.60.10`), remediate selected issues, and rescan
 - [ ] Expand attack/detection exercises
 - [ ] Document final physical and logical network design
 
 ---
+
+### Planned Monitoring and Vulnerability Scanning
+
+- [Zabbix monitoring plan](docs/07-zabbix-monitoring.md)
+- [OpenVAS vulnerability scanning plan](docs/25-openvas-vulnerability-scanning.md)
 
 ## Documentation Status
 
@@ -741,6 +775,10 @@ The documentation numbering is intentionally organized around major project phas
 | `18-physical-infrastructure.md` | Physical layout, power, ventilation, mounting, and serviceability | Active reference |
 | `19-shutdown-startup-runbook.md` | Controlled full-lab shutdown, startup, validation, and rollback | Active runbook |
 | `20-cabling-standard.md` | Ethernet cable IDs, endpoint labels, port mapping, and cable management | Active reference |
+| `21-proxmox-backup-restore-validation.md` | Isolated Docker VM restore and service verification | Completed test |
+| `22-adsb-flight-tracking.md` | ADS-B receiver migration, feeds, and local map | Implemented; migration and reboot checks documented |
+| `23-tailscale-remote-access.md` | Remote access and travel troubleshooting | Implemented; LAN address change planned |
+| `25-openvas-vulnerability-scanning.md` | Scanner deployment, findings review, remediation, and rescanning | Planned |
 
 ---
 
