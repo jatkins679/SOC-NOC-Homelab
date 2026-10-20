@@ -1,827 +1,239 @@
 # SOC/NOC Homelab
 
+A working homelab for networking, systems administration, virtualization, security monitoring, and troubleshooting.
+
+This project started with a collection of old computers, Raspberry Pis, switches, and other equipment sitting in my garage. I wanted to see what I could build with the hardware I already had.
+
+What started as a few experiments has grown into a four-node Proxmox cluster with managed switching, VLANs, Windows Active Directory, Linux and Windows servers, security monitoring, and a growing collection of network services.
+
+This repository documents what I've built, how I've configured it, problems I've encountered, and how I've worked through them.
+
+It isn't a production enterprise network. It's a place to experiment, break things, fix them, and gain practical experience.
+
+---
+
 ## Start Here
 
-This started as a collection of “junk” equipment in my garage. I wanted to see what I could do with it all. It has grown into a working lab for networking, systems administration, and security monitoring.
+If you're new to this repository, these three examples provide a good introduction to the kind of work I've been doing.
 
-If you only have a few minutes, these three examples are a good place to start:
+### 1. Wazuh Deployment and Troubleshooting
 
-### Getting Wazuh Working
+My initial Wazuh installation failed because the Ubuntu VM's root logical volume wasn't using all of the disk space available to it.
 
-The first installation ran into a disk-space problem even though the VM had plenty of virtual disk capacity. I traced the problem through the storage layers, worked through the failed deployment, and got the monitoring system running.
+I worked through the storage configuration, identified why OpenSearch had placed its index into read-only mode, and rebuilt the installation.
 
 [Wazuh deployment and troubleshooting](docs/06-wazuh-siem.md)
 
-### Testing a Backup by Restoring It
+### 2. Testing a Proxmox Backup
 
-I restored a backup of my Docker VM into a temporary guest, kept it isolated from the network, and checked that Docker and Uptime Kuma worked inside it.
+A successful backup doesn't necessarily mean the backup can be restored.
 
-[Backup restore test](docs/21-proxmox-backup-restore-validation.md)
+I restored my Docker VM into an isolated temporary VM and checked that the operating system, Docker, and Uptime Kuma worked before removing the test instance.
 
-### Figuring Out Why Remote Access Failed
+[Proxmox backup and restore validation](docs/21-proxmox-backup-restore-validation.md)
 
-While traveling, I could not reach my home server. The server was running, but the network where I was staying used the same subnet as my home LAN. I checked the routes, used an SSH tunnel to get in, and then verified direct access through Tailscale.
+### 3. Troubleshooting Remote Access
 
-[Remote-access troubleshooting](docs/23-tailscale-remote-access.md)
+While traveling in Europe, I discovered that the local network and my home network were using overlapping IP address ranges.
 
-For the broader picture, see the [asset inventory](docs/02-asset-inventory.md) and [network layout](docs/04-network-vlans.md). For the security exercises, see the [Wazuh detection labs](docs/09-attack-detection-labs.md).
+I investigated the routing problem, used SSH tunneling as a workaround, and tested direct Tailscale connectivity to reach my systems remotely.
 
----
+The experience also led me to reconsider the addressing scheme for my home network.
 
-A hands-on infrastructure, networking, and security-monitoring lab built from repurposed hardware, small-form-factor systems, Raspberry Pis, Proxmox VE, Linux, and open-source security tools.
-
-The goal of this project is to document what I actually build, the commands I use, the problems I run into, how I troubleshoot them, and what I learn from the process.
-
-This is not intended to represent a production enterprise network. It is a practical learning environment built from hardware I already had available, with a focus on skills relevant to NOC, SOC, systems administration, networking, and entry-level cybersecurity work.
+[Tailscale remote access and troubleshooting](docs/23-tailscale-remote-access.md)
 
 ---
 
-## Current Lab Status
+## Lab Architecture
 
-The lab currently includes:
+The lab runs primarily on repurposed hardware, including mini PCs, a Dell laptop, a Windows storage server, and Raspberry Pis.
 
-- A four-node Proxmox VE cluster
-- Independent Linux management host
-- Physical Pi-hole DNS server
-- Shared Windows-based storage and backup server
-- Kali Linux security-testing system
-- Ubuntu target/test system
-- Wazuh all-in-one SIEM server
-- Wazuh Linux endpoint monitoring
-- Windows 11 endpoint monitoring with Sysmon and PowerShell Script Block Logging
-- Windows Server 2025 Active Directory Domain Services and AD-integrated DNS
-- Domain-joined Windows 11 workstation in `corp.home.arpa`
-- Wazuh monitoring of Active Directory account-management events
+### Virtualization
+
+Four Proxmox VE nodes form the `homelab` cluster:
+
+| Host | IP Address |
+|---|---|
+| pve01 | 192.168.1.10 |
+| pve02 | 192.168.1.11 |
+| pve03 | 192.168.1.12 |
+| pve04 | 192.168.1.13 |
+
+The cluster hosts Linux and Windows virtual machines, security tools, networking services, monitoring systems, and Docker applications.
+
+### Networking
+
+The network includes:
+
+- Cisco SG350-10 managed switch (`sw01`)
+- UniFi US-8 managed switch (`sw02`)
+- OPNsense firewall/router (`fw01`)
+- Pi-hole DNS server (`dns01`)
+- Tailscale subnet routing and remote access
+- Segmented VLANs for management, servers, users, security monitoring, testing, and guests
+
+The original flat LAN uses `192.168.1.0/24`. Some services have already been moved to VLANs, while other systems remain on the original network.
+
+I'm also evaluating a change to `192.168.11.0/24` for the default LAN to reduce the likelihood of overlapping subnets when accessing the lab remotely.
+
+[Managed switching and VLAN documentation](docs/04-network-vlans.md)
+
+### Systems and Services
+
+| System | Purpose |
+|---|---|
+| Windows Server 2025 | Active Directory and DNS |
+| Wazuh | SIEM and endpoint monitoring |
+| LibreNMS | Network monitoring |
+| NetBox | IP address and infrastructure management |
+| Grafana / Prometheus | Metrics collection and visualization |
+| Uptime Kuma | Availability monitoring |
+| Nginx Proxy Manager | Reverse proxy |
+| Homarr | Service dashboard |
+| Apache Guacamole | Browser-based remote administration |
+| Tailscale | Remote access |
+| Kali Linux | Security testing |
+| Ubuntu target | Detection and vulnerability-testing exercises |
+
+I also operate a separate Linux VPS connected to the lab through Tailscale. It provides an opportunity to experiment with administration and monitoring outside the home network.
+
+[Asset inventory](docs/02-asset-inventory.md)
+
+---
+
+## Security Monitoring and Detection
+
+Wazuh is the main security-monitoring platform.
+
+I've configured Linux and Windows endpoints to generate telemetry and used controlled exercises to test how those events appear in the SIEM.
+
+Exercises include:
+
+- SSH brute-force detection
 - File Integrity Monitoring
-- Linux Auditd integration
-- Apache log monitoring
-- Controlled SOC detection exercises
-- Shared Proxmox backup storage
-- Docker application host for reverse proxy, dashboards, metrics, and uptime monitoring
-- NetBox IPAM/DCIM service
-- Browser-based remote administration through Apache Guacamole
-- UPS monitoring / graceful-shutdown foundation through `util01`
+- Apache log analysis and SQL-injection-style detection
+- Linux Auditd and privileged-command monitoring
+- Local Linux account creation and deletion
+- Windows Sysmon and PowerShell logging
+- Active Directory account-management monitoring
 
-Managed switching, VLAN segmentation, and OPNsense routing are operational. The Cisco SG350-10 is `sw01` at `192.168.1.21/24`; Gi1-Gi4 connect the Proxmox secondary Ethernet paths, Gi5 connects to the UniFi US-8 (`sw02`, `192.168.1.22`), and the existing flat-LAN uplink is documented on Gi8. Existing `vmbr0` management traffic remains on the TRENDnet switch and `192.168.1.0/24`, while selected guests use tagged VLANs 20-60 through `vmbr1` and OPNsense `fw01`.
+The exercises document both the activity that generated the event and how I verified the resulting alert.
 
----
+[Wazuh detection labs](docs/09-attack-detection-labs.md)
 
-## Current Architecture
+[Windows endpoint telemetry](docs/08-windows-telemetry.md)
 
-| System | Role | IP Address |
-|---|---|---|
-| `pve01` | Proxmox cluster node | `192.168.1.10` |
-| `pve02` | Proxmox cluster node | `192.168.1.11` |
-| `pve03` | Proxmox cluster node | `192.168.1.12` |
-| `pve04` | Dell Precision 5550 Proxmox cluster node | `192.168.1.13` |
-| `adsb01` | Debian 13 ADS-B receiver VM on `pve03` | `192.168.1.246` |
-| `mgmt01` | Independent Linux management host | `192.168.1.5` |
-| `dns01` | Physical Pi-hole DNS server | `192.168.1.20` |
-| `storage01` | Windows Server 2025 storage/media/backup server | `192.168.1.208` |
-| `docker` | Debian 13 Docker application host (VM 210 on `pve02`) | `192.168.1.174` |
-| `util01` | Debian 13 utility / NUT monitoring host | `192.168.1.243` |
-| `tailscale01` | Dedicated Tailscale subnet router / remote-access gateway | `192.168.1.185` |
-| `fw01` | OPNsense router/firewall (VM 220) | `192.168.1.187` / `10.10.10.1` |
-| `nb01` | NetBox IPAM/DCIM (VM 106 on `pve04`) | `10.10.10.15` |
-| `nms01` | LibreNMS network monitoring | `10.10.40.10` |
-| `wazuh01` | Wazuh SIEM server | `10.10.40.20` (legacy flat NIC retained during audit) |
-| `target01` | Ubuntu monitored/test endpoint | `10.10.60.10` |
-| `kali01` | Security-testing system | `10.10.50.113` |
-| `vulnscan01` | Vulnerability-scanning system | Stopped; address requires revalidation |
-| `pialert` | Network-presence monitoring service | DHCP (`192.168.1.225` observed) |
-| `dc01` | Windows Server 2025 AD DS / DNS domain controller | `10.10.20.10` |
-| `win11-01` | Windows 11 Pro domain-joined monitored endpoint | `10.10.30.160` |
+[Active Directory lab](docs/10-active-directory-lab.md)
 
-The Proxmox cluster is named:
+### Vulnerability Scanning
 
-```text
-homelab
-```
+OpenVAS/Greenbone is planned as a separate vulnerability-assessment exercise.
 
-and currently consists of:
+The goal is to scan a lab target, review the findings, investigate selected vulnerabilities, make configuration changes, and rescan to verify the results.
 
-```text
-pve01
-pve02
-pve03
-pve04
-```
-
-with four-node quorum verified. The cluster requires three votes for quorum.
+[OpenVAS vulnerability-scanning plan](docs/25-openvas-vulnerability-scanning.md)
 
 ---
 
-## Project Documentation
+## Operations, Backups, and Recovery
 
-### Reference Documentation
+A substantial part of the project involves maintaining the lab rather than simply installing new applications.
 
-#### [Asset Inventory](docs/02-asset-inventory.md)
+That includes:
 
-Provides the current working inventory of physical systems, Proxmox nodes,
-virtual machines and containers, infrastructure services, security systems,
-storage, monitoring coverage, IP addressing, and planned assets.
+- Proxmox cluster and VM administration
+- Backup scheduling and restore testing
+- Monitoring availability and resource usage
+- DNS and connectivity troubleshooting
+- Firewall and VLAN configuration
+- UPS monitoring and shutdown planning
+- Linux service troubleshooting
+- System inventory and IP address management
 
-The inventory intentionally distinguishes between operational, DHCP-addressed,
-supporting, historical, and planned assets so future-state systems are not
-presented as already deployed.
+Shared backup storage is hosted on a Windows server, with staggered Proxmox backup jobs and finite retention.
 
----
+I've also documented why I decided not to use Ceph. Although Ceph can provide distributed, redundant storage across cluster nodes, the additional complexity and resource requirements aren't justified for my current equipment.
 
-#### [Tailscale Remote Access](docs/23-tailscale-remote-access.md)
+[Storage and backup resilience](docs/17-storage-backup-resilience.md)
 
-Documents the dedicated `tailscale01` subnet router, advertised `192.168.1.0/24` route, remote-access path, validation, and separation between Tailscale remote access and commercial VPN use.
+[Operations checklist](docs/15-homelab-operations-checklist.md)
 
-#### [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md)
-
-Maps SOC, NOC, systems, networking, identity, security-monitoring, backup,
-troubleshooting, and documentation competencies to specific hands-on lab work
-and repository evidence.
-
-The matrix separates demonstrated skills from supporting and planned work so the
-portfolio does not claim experience that has not yet been implemented and
-validated.
+[Shutdown and startup runbook](docs/19-shutdown-startup-runbook.md)
 
 ---
 
-#### [SOC Alert Triage and Investigation Playbook](docs/12-soc-alert-triage-playbook.md)
+## Other Projects
 
-Documents the repeatable analyst workflow used to validate, classify, scope,
-prioritize, investigate, remediate, and verify security alerts.
+### ADS-B Aircraft Tracking
 
-Includes worked examples for SSH brute force, file-integrity changes,
-SQL-injection-style requests, and Active Directory account creation, plus a
-reusable investigation-notes template.
+I operate an ADS-B receiver that listens to aircraft broadcasts, decodes position and flight information, and displays nearby aircraft on a local map.
 
----
+The receiver has been migrated from a Raspberry Pi to a Debian VM running on Proxmox.
 
-#### [NOC Network and Service Troubleshooting Runbook](docs/13-noc-troubleshooting-runbook.md)
+It also feeds aircraft tracking services.
 
-Documents a repeatable infrastructure troubleshooting workflow for host-down,
-DNS, Internet connectivity, Proxmox cluster, VM/LXC, storage, disk-capacity,
-Linux service, endpoint-monitoring, and Windows domain-connectivity incidents.
+[ADS-B receiver documentation](docs/22-adsb-flight-tracking.md)
 
-Includes incident-priority guidance, dependency mapping, escalation/handoff
-notes, service-restoration checks, and reusable incident templates.
+### Remote VPS
 
----
+I've added a Linux VPS outside my home network, connected through Tailscale.
 
-#### [SOC/NOC Incident and Change Ticket Examples](docs/14-soc-noc-ticket-examples.md)
+It runs Docker, Uptime Kuma, and Prometheus Node Exporter. Its metrics are collected by my home Prometheus instance.
 
-Provides concise operations-style ticket examples based on actual homelab work,
-including Wazuh failures, DNS migration, Proxmox cluster validation, Active
-Directory events, detection alerts, storage checks, and escalation notes.
-
-Shows how technical troubleshooting is translated into clear incident,
-change-control, validation, handoff, and closure documentation.
+This provides an additional place to practice Linux administration, remote connectivity, firewall configuration, and monitoring.
 
 ---
 
-#### [Homelab Operations and Health Checklist](docs/15-homelab-operations-checklist.md)
+## Documentation
 
-Defines daily, weekly, monthly, and periodic operational checks for Proxmox,
-Wazuh, Pi-hole DNS, backups, storage, Windows endpoints, Active Directory,
-capacity, telemetry health, maintenance readiness, and recovery testing.
+The detailed documentation is organized by subject.
 
-The Cisco, VLAN, and OPNsense operating state is documented separately from
-future SNMPv3, syslog, and SPAN expansion.
+| Area | Documentation |
+|---|---|
+| Hardware and systems | [Asset inventory](docs/02-asset-inventory.md) |
+| Proxmox | [Cluster build](docs/03-proxmox-cluster-build.md) |
+| Networking | [Switching and VLANs](docs/04-network-vlans.md) |
+| Firewall | [OPNsense](docs/05-opnsense.md) |
+| Security monitoring | [Wazuh](docs/06-wazuh-siem.md) |
+| Detection exercises | [Attack detection labs](docs/09-attack-detection-labs.md) |
+| Windows identity | [Active Directory](docs/10-active-directory-lab.md) |
+| SOC operations | [Alert triage playbook](docs/12-soc-alert-triage-playbook.md) |
+| NOC operations | [Troubleshooting runbook](docs/13-noc-troubleshooting-runbook.md) |
+| Operational examples | [Incident and change tickets](docs/14-soc-noc-ticket-examples.md) |
+| Recovery | [Backup restore validation](docs/21-proxmox-backup-restore-validation.md) |
+| Remote access | [Tailscale](docs/23-tailscale-remote-access.md) |
+| Network migration | [VLAN dependency checklist](docs/24-vlan-migration-dependency-checklist.md) |
+| Vulnerability scanning | [OpenVAS plan](docs/25-openvas-vulnerability-scanning.md) |
 
----
-
-#### [04 - Managed Switching and VLAN Design](docs/04-network-vlans.md)
-
-Documents the Cisco SG350-10 (`sw01`) bench configuration, firmware validation,
-configuration backup, current port convention, operational VLANs, OPNsense
-routing, and the current migration/audit state.
-
-#### [24 - VLAN Migration Dependency Checklist](docs/24-vlan-migration-dependency-checklist.md)
-
-Defines the mandatory pre/post-migration audit across firewall policy, DNS,
-LibreNMS, Wazuh, Uptime Kuma, Guacamole, automation, and documentation. The
-remaining post-migration remediation is tracked in GitHub issue #1.
-
----
-
-#### [18 - Physical Infrastructure and Lab Layout](docs/18-physical-infrastructure.md)
-
-Documents the physical shelf constraints, equipment zones, power separation,
-ventilation, mounting, serviceability, and before/after evidence standards used
-for the homelab rebuild.
+The [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md) connects specific skills to documented work in the lab.
 
 ---
 
-#### [19 - Homelab Shutdown and Startup Runbook](docs/19-shutdown-startup-runbook.md)
-
-Defines the controlled full-lab shutdown, physical-change window, startup order,
-validation checks, and rollback path used when the lab is intentionally powered
-down for infrastructure work.
-
----
-
-#### [20 - Ethernet Cabling and Labeling Standard](docs/20-cabling-standard.md)
-
-Defines the `C##` cable-ID convention, dual-end labeling, endpoint naming,
-prepared cable map, switch-port recording, and cable-management practices for
-the physical lab.
-
----
-
-### Completed
-
-#### [01 - Proxmox Backup and Recovery](docs/01-proxmox-backup.md)
-
-Documents the pre-rebuild backup process, Proxmox storage validation, VM/LXC inventory, backup verification, and recovery-oriented checks performed before destructive infrastructure changes.
-
-Topics include:
-
-- Proxmox storage inspection
-- VM and LXC inventory
-- Shared backup storage
-- `vzdump`
-- Backup verification
-- Restore-oriented validation
-- Host configuration backup
-
-Related hands-on recovery validation:
-
-#### [21 - Proxmox Backup and Restore Validation](docs/21-proxmox-backup-restore-validation.md)
-
-Documents the August 26, 2026 isolated restore test of Docker VM 210, including
-temporary restore to VMID 910, network isolation, QEMU Guest Agent validation,
-Docker/Uptime Kuma service verification, and cleanup of the temporary guest.
-
----
-
-#### [02 - Pi-hole Migration](docs/02-pihole-migration.md)
-
-Documents the migration of DNS service from a Proxmox-hosted Pi-hole container to a dedicated Raspberry Pi.
-
-The physical Pi-hole server is:
-
-```text
-dns01
-192.168.1.20
-```
-
-Topics include:
-
-- Raspberry Pi hostname configuration
-- Raspberry Pi OS updates
-- Pi-hole installation
-- DNS-service validation
-- Retaining the existing DNS service address
-- Migration planning designed to minimize client-side changes
-
----
-
-#### [03 - Proxmox Cluster Build and Validation](docs/03-proxmox-cluster-build.md)
-
-Documents the initial three-node build and the current four-node Proxmox cluster:
-
-```text
-pve01  192.168.1.10
-pve02  192.168.1.11
-pve03  192.168.1.12
-pve04  192.168.1.13
-```
-
-Topics include:
-
-- Cluster membership
-- Quorum
-- Node identity
-- Networking
-- Shared storage
-- VM and LXC visibility
-- Cluster resource validation
-- Capacity review
-- Decision not to deploy Ceph
-
----
-
-#### [16 - Proxmox Node Expansion and Workload Rebalancing](docs/16-proxmox-node-expansion.md)
-
-Documents the addition of `pve04`, repository and version standardization,
-four-node quorum validation, workload rebalancing, and startup-policy review.
-
----
-
-#### [17 - Storage and Backup Resilience](docs/17-storage-backup-resilience.md)
-
-Documents the verified `storage01` hardware and attached-storage layout, recovery
-of the Proxmox CIFS target after its backing directory was removed, validation
-of a complete ten-guest backup set, staggered per-node scheduling, finite
-retention, Drobo capacity monitoring, and Proxmox LVM-thin remediation.
-
----
-
-#### [06 - Wazuh SIEM Deployment](docs/06-wazuh-siem.md)
-
-Documents deployment of the Wazuh SIEM server as a dedicated Proxmox virtual machine.
-
-Topics include:
-
-- Ubuntu Server deployment
-- Proxmox VM configuration
-- Pi-hole DNS integration
-- QEMU guest agent
-- LVM expansion
-- Wazuh all-in-one installation
-- OpenSearch troubleshooting
-- Disk flood-stage diagnosis
-- Failed-install recovery
-- Clean VM rebuild
-- Wazuh service validation
-- Linux agent enrollment
-
-This document also records an important deployment failure in which Ubuntu had not allocated the full virtual disk to the root logical volume. OpenSearch crossed its disk flood-stage threshold, placed its security index into read-only mode, and caused the Wazuh installer to fail during internal-user configuration.
-
-Rather than hiding the failed deployment, the troubleshooting process is documented because it demonstrates the diagnostic workflow that led to the root cause and recovery decision.
-
----
-
-#### [08 - Windows Endpoint Telemetry](docs/08-windows-telemetry.md)
-
-Documents deployment and validation of Windows security telemetry on `win11-01`.
-
-Topics include:
-
-- Windows Wazuh agent deployment and troubleshooting
-- Sysmon installation and Event ID 1 process telemetry
-- PowerShell Script Block Logging and Event ID 4104
-- Wazuh Rule 92027
-- Wazuh Rule 91843
-- MITRE ATT&CK mapping for PowerShell and registry modification
-
----
-
-#### [09 - Wazuh Attack Detection Labs](docs/09-attack-detection-labs.md)
-
-Documents controlled SOC exercises performed after the Wazuh deployment was operational.
-
-Completed detections include:
-
-| Lab | Detection | Wazuh Rule | Level | MITRE ATT&CK |
-|---|---|---:|---:|---|
-| 1 | SSH brute force | `5712` | 10 | `T1110` |
-| 2 | File integrity modification | `550` | 7 | `T1565.001` |
-| 3 | SQL injection attempt | `31103` | 7 | `T1190` |
-| 4 | Root command execution | `80792` | 3 | — |
-| 5a | Local account creation | `5902` | 8 | `T1136` |
-| 5b | Local account deletion | `5903` | 3 | `T1531` |
-
-These exercises validate the telemetry path:
-
-```text
-Controlled activity
-      ↓
-Linux / application logs
-      ↓
-Wazuh agent
-      ↓
-Wazuh manager / indexer
-      ↓
-Wazuh rule correlation
-      ↓
-Threat Hunting
-      ↓
-Analyst validation
-```
-
----
-
-#### [10 - Active Directory Lab](docs/10-active-directory-lab.md)
-
-Documents deployment and validation of the Windows Active Directory environment and its integration with the SOC monitoring stack.
-
-The lab includes:
-
-```text
-Domain: corp.home.arpa
-NetBIOS: CORP
-Domain controller: dc01
-Domain-joined endpoint: win11-01
-```
-
-Topics include:
-
-- Active Directory Domain Services
-- AD-integrated DNS
-- Domain and forest validation
-- Windows 11 domain join
-- Secure-channel verification
-- Domain password-policy inspection
-- Active Directory user lifecycle administration
-- Windows Security Event IDs 4720, 4725, and 4726
-- Wazuh detection of domain-account creation
-- Wazuh Rule 60109
-- MITRE ATT&CK T1098 - Account Manipulation
-
-The account-creation exercise validated an end-to-end detection path from an Active Directory administrative action through the Windows Security log and Wazuh to a SIEM alert.
-
----
-
-## Detection Work Completed
-
-### SSH Brute-Force Detection
-
-Repeated failed SSH attempts were generated from `kali01` against a nonexistent account on `target01`.
-
-Wazuh generated:
-
-```text
-Rule 5712
-Level 10
-MITRE T1110 - Brute Force
-```
-
-The Wazuh alert was independently validated against the original SSH journal on the endpoint.
-
----
-
-### File Integrity Monitoring
-
-Wazuh FIM was configured to monitor a controlled test directory in real time.
-
-A configuration file was:
-
-1. Created
-2. Modified
-3. Deleted
-
-Wazuh captured:
-
-- File-size changes
-- Modification time
-- MD5
-- SHA1
-- SHA256
-- File-content difference
-
-The modification generated:
-
-```text
-Rule 550
-Level 7
-MITRE T1565.001 - Stored Data Manipulation
-```
-
----
-
-### Web / SQL Injection Detection
-
-Apache access logs from `target01` were added to Wazuh log collection.
-
-A controlled request containing SQL-like syntax was generated from `kali01`.
-
-Wazuh generated:
-
-```text
-Rule 31103
-Level 7
-MITRE T1190 - Exploit Public-Facing Application
-```
-
-The request returned HTTP 404, but the attempt was still correctly identified from the Apache access log.
-
----
-
-### Privileged Command Monitoring
-
-Linux Auditd was configured to record `execve` events executed with effective UID 0.
-
-Wazuh generated:
-
-```text
-Rule 80792
-```
-
-for root-level command activity.
-
-The audit records demonstrated the difference between:
-
-```text
-AUID = original authenticated user
-EUID = effective execution identity
-```
-
-This allowed a root-level command to be attributed back to the original user session.
-
----
-
-### Local Account Creation and Deletion
-
-A controlled test account was created and later removed.
-
-Account creation generated:
-
-```text
-Rule 5902
-Level 8
-MITRE T1136 - Create Account
-```
-
-Account deletion generated:
-
-```text
-Rule 5903
-Level 3
-MITRE T1531 - Account Access Removal
-```
-
----
-
-#### [22 - ADS-B Flight Tracking Receiver](docs/22-adsb-flight-tracking.md)
-
-ADS-B is a radio broadcast from aircraft containing information such as position, altitude, and speed. My receiver picks up those signals, plots nearby aircraft on a local map, and forwards data to flight-tracking services.
-
-Documents the migration of the ADS-B receiver from a Raspberry Pi to the
-`adsb01` Debian 13 VM on `pve03`.
-
-Topics include:
-
-- RTL2832U / R820T USB passthrough
-- `readsb` ADS-B decoding
-- PiAware / FlightAware feeding
-- FR24feed / Flightradar24 feeding
-- tar1090 local aircraft map
-- Service and reboot validation
-- Uptime Kuma monitoring
-- Raspberry Pi retirement / repurposing
-
-## Hardware
-
-The lab is intentionally built from modest and repurposed hardware rather than enterprise server equipment.
-
-Current systems include:
-
-- Acemagic mini PCs used as Proxmox nodes
-- Ace Magician mini PC
-- Lenovo laptop used as an independent management host
-- Dell PowerEdge T20 used for storage, media, and backup
-- Raspberry Pi used for DNS
-- Additional Raspberry Pi hardware, including the former ADS-B receiver now available for repurposing
-- TRENDnet TEG-S160G unmanaged switch (`sw-home01`) for the existing home network
-- Cisco SG350-10 managed switch (`sw01`, `192.168.1.21`), operational as the managed homelab switching platform
-- UniFi US-8 managed switch (`sw02`, `192.168.1.22`), adopted into the UniFi controller (`unifi01`, `192.168.1.23:11443`)
-- GL.iNet hardware for network experimentation / backup connectivity
-
-`sw01` is not presented as the household switch replacement. The current home
-network continues to use `sw-home01`; the Cisco switch is being introduced as
-the managed homelab switching platform.
-
----
-
-## Storage and Backup
-
-Proxmox currently uses:
-
-```text
-local
-local-lvm
-t-20-backup
-```
-
-`local` is directory-based Proxmox storage used for files such as ISOs and templates.
-
-`local-lvm` is LVM-thin storage used primarily for VM and container disks.
-
-`t-20-backup` is CIFS-backed shared storage hosted by the Dell PowerEdge T20 and is used for Proxmox backups.
-
-The target is a Windows SMB share backed by a USB-attached Drobo. The Drobo
-presents a 64 TB thin-provisioned NTFS volume, but its current physical layout
-is two 6 TB drives with 5.34 TB of protected usable capacity. Drobo Dashboard,
-not the 64 TB logical value reported through CIFS, is the authoritative source
-for physical capacity.
-
-Backups use finite retention (`keep-last=7`, `keep-weekly=4`,
-`keep-monthly=3`) and run as staggered per-node jobs rather than four concurrent
-writes to the USB-backed target.
-
-Ceph is intentionally not used. Ceph is a distributed storage platform that can make VM disks available across cluster nodes with redundancy. The current mini-PC hardware and lab scale do not justify the additional resource and storage overhead.
-
----
-
-## Current Security Stack
-
-### Wazuh
-
-Used for:
-
-- SIEM
-- Endpoint monitoring
-- Log collection
-- Threat Hunting
-- File Integrity Monitoring
-- Auditd event analysis
-- Authentication monitoring
-- MITRE ATT&CK mappings
-- Security alert correlation
-
-### Active Directory
-
-The Windows identity lab uses `dc01` as the Active Directory Domain Services and DNS server for:
-
-```text
-corp.home.arpa
-```
-
-The environment is used to practice:
-
-- Domain administration
-- Active Directory DNS
-- Windows domain joins
-- Password-policy enforcement
-- User account lifecycle management
-- Windows Security event analysis
-- Identity-related SIEM detection
-- MITRE ATT&CK mapping for account manipulation
-
-### Kali Linux
-
-Used as a controlled security-testing system for generating activity against systems owned and operated within the lab.
-
-### Ubuntu Target System
-
-`target01` is used as a monitored Linux endpoint and controlled security-testing target.
-
-It currently provides telemetry from:
-
-- SSH
-- journald
-- Apache
-- Wazuh Syscheck / FIM
-- Linux Auditd
-- Linux account-management events
-
----
-
-## Managed Switching and Segmented Network
-
-`sw01` is operational at `192.168.1.21/24`, with the Proxmox secondary Ethernet
-paths connected to Gi1-Gi4 and the unmanaged-switch uplink on Gi8. Existing
-`vmbr0` management remains on the flat TRENDnet path; VLAN-tagged guests use
-`vmbr1` and OPNsense `fw01` for routed, filtered connectivity.
-
-The operational design includes separate logical areas for:
-
-- Management
-- Servers
-- User systems
-- SOC/security systems
-- Attack/testing systems
-- Guest access
-
-The current switching, VLAN, OPNsense, and guest attachment state is documented
-in [`04-network-vlans.md`](docs/04-network-vlans.md). The dependency audit and
-mandatory migration gates are documented in
-[`24-vlan-migration-dependency-checklist.md`](docs/24-vlan-migration-dependency-checklist.md).
-
----
-
-## Roadmap
-
-### Completed
-
-- [x] Inventory existing lab hardware
-- [x] Back up Proxmox workloads
-- [x] Validate Proxmox recovery process
-- [x] Move Pi-hole to physical Raspberry Pi
-- [x] Establish `mgmt01`
-- [x] Move storage/media role to `storage01`
-- [x] Build initial three-node Proxmox cluster
-- [x] Add `pve04` as the fourth cluster node
-- [x] Standardize all nodes on Proxmox VE 9.2.10 and kernel 7.0.14-12-pve
-- [x] Verify four-node cluster quorum
-- [x] Rebalance `wazuh01` and `vulnscan01` across the expanded cluster
-- [x] Migrate ADS-B reception from Raspberry Pi to `adsb01` on `pve03` with FlightAware, Flightradar24, and tar1090
-- [x] Verify shared backup storage
-- [x] Recover and validate the `t-20-backup` CIFS target
-- [x] Rebuild and verify current backups for all ten guests
-- [x] Configure finite backup retention and stagger jobs by node
-- [x] Deploy Wazuh SIEM
-- [x] Enroll first Linux Wazuh agent
-- [x] Enroll Windows Wazuh agent
-- [x] Configure Windows telemetry
-- [x] Validate Sysmon and PowerShell detections
-- [x] Validate SSH brute-force detection
-- [x] Validate File Integrity Monitoring
-- [x] Validate Apache / SQL-injection-style detection
-- [x] Integrate Linux Auditd
-- [x] Validate privileged-command monitoring
-- [x] Validate local account creation/deletion monitoring
-- [x] Deploy Windows Server 2025 Active Directory Domain Services
-- [x] Create the `corp.home.arpa` Active Directory domain
-- [x] Join `win11-01` to the domain and verify the secure channel
-- [x] Validate Active Directory account-creation detection in Wazuh
-- [x] Receive and identify the Cisco SG350-10
-- [x] Configure `sw01` with fixed management address `192.168.1.21/24`
-- [x] Validate Cisco firmware and baseline VLAN state from the CLI
-- [x] Download a baseline Cisco startup-configuration backup
-- [x] Deploy OPNsense `fw01`
-- [x] Implement VLANs 20-60 and migrate the first guest set
-- [x] Validate Wazuh agent traffic across VLANs
-- [x] Deploy LibreNMS network monitoring on `nms01`
-- [x] Deploy Docker application host `docker` at `192.168.1.174`
-- [x] Deploy Nginx Proxy Manager, Homarr, Uptime Kuma, Grafana, and Prometheus on `docker`
-- [x] Deploy Apache Guacamole browser-based remote access
-- [x] Deploy NetBox IPAM/DCIM as `nb01` on the management VLAN
-
-### In Progress / Planned
-
-- [ ] Add screenshots and diagrams to completed documentation
-- [ ] Complete GitHub issue #1 post-VLAN dependency remediation
-- [ ] Add stable DNS records for all migrated systems
-- [ ] Update LibreNMS, Uptime Kuma, Guacamole, and service bindings to VLAN addresses
-- [ ] Validate cellular backup Internet using the GL.iNet GL-A1300 travel router, a compatible USB LTE modem, and a SIM
-- [ ] Add additional Linux agents
-- [ ] Monitor SSH `authorized_keys`
-- [ ] Create custom Wazuh rules
-- [ ] Test Wazuh Active Response
-- [ ] Tune alerts and reduce false positives
-- [ ] Add Zabbix
-- [ ] Deploy OpenVAS, investigate findings on `target01` (`10.10.60.10`), remediate selected issues, and rescan
-- [ ] Expand attack/detection exercises
-- [ ] Document final physical and logical network design
-
----
-
-### Planned Monitoring and Vulnerability Scanning
-
-- [Zabbix monitoring plan](docs/07-zabbix-monitoring.md)
-- [OpenVAS vulnerability scanning plan](docs/25-openvas-vulnerability-scanning.md)
-
-## Documentation Status
-
-The documentation numbering is intentionally organized around major project phases.
-
-| Document | Topic | Status |
-|---|---|---|
-| `01-proxmox-backup.md` | Backup and recovery preparation | Complete |
-| `02-asset-inventory.md` | Current physical, virtual, service, and monitoring inventory | Active reference |
-| `02-pihole-migration.md` | Physical Pi-hole migration | Complete |
-| `03-proxmox-cluster-build.md` | Proxmox cluster build and current four-node validation | Complete |
-| `04-network-vlans.md` | Cisco switching, VLANs, and OPNsense topology | Active reference |
-| `05-opnsense.md` | OPNsense routing/firewalling | Active reference |
-| `06-wazuh-siem.md` | Wazuh deployment | Complete |
-| `07-zabbix-monitoring.md` | Infrastructure monitoring | Planned |
-| `08-windows-telemetry.md` | Windows endpoint telemetry | Complete |
-| `09-attack-detection-labs.md` | SOC detection exercises | Active / documented |
-| `24-vlan-migration-dependency-checklist.md` | Mandatory VLAN migration dependency audit | Active reference |
-| `10-active-directory-lab.md` | Active Directory and identity monitoring | Complete |
-| `11-soc-noc-skills-matrix.md` | SOC/NOC skills matrix | Active reference |
-| `12-soc-alert-triage-playbook.md` | SOC alert triage and investigation | Active reference |
-| `13-noc-troubleshooting-runbook.md` | NOC troubleshooting runbook | Active reference |
-| `14-soc-noc-ticket-examples.md` | Incident and change ticket examples | Active reference |
-| `15-homelab-operations-checklist.md` | Homelab operations and health checklist | Active reference |
-| `16-proxmox-node-expansion.md` | Fourth-node expansion and workload rebalancing | Complete |
-| `17-storage-backup-resilience.md` | Storage inventory, CIFS recovery, backup scheduling, and capacity safeguards | Complete |
-| `18-physical-infrastructure.md` | Physical layout, power, ventilation, mounting, and serviceability | Active reference |
-| `19-shutdown-startup-runbook.md` | Controlled full-lab shutdown, startup, validation, and rollback | Active runbook |
-| `20-cabling-standard.md` | Ethernet cable IDs, endpoint labels, port mapping, and cable management | Active reference |
-| `21-proxmox-backup-restore-validation.md` | Isolated Docker VM restore and service verification | Completed test |
-| `22-adsb-flight-tracking.md` | ADS-B receiver migration, feeds, and local map | Implemented; migration and reboot checks documented |
-| `23-tailscale-remote-access.md` | Remote access and travel troubleshooting | Implemented; LAN address change planned |
-| `25-openvas-vulnerability-scanning.md` | Scanner deployment, findings review, remediation, and rescanning | Planned |
+## Current Work
+
+Some of the work I'm continuing includes:
+
+- Completing the VLAN migration and related service updates
+- Reconsidering the default LAN addressing scheme
+- Adding OpenVAS vulnerability scanning
+- Expanding Wazuh detection exercises
+- Improving network and system monitoring
+- Testing additional recovery scenarios
+- Developing automation and infrastructure-management skills
+- Adding screenshots and diagrams to the documentation
+
+This list will change as the lab develops.
 
 ---
 
 ## Documentation Approach
 
-This repository is intended to show the actual operational process rather than a polished fictional build.
+I try to document the things I actually do.
 
-That means the documentation includes:
+That includes configurations, commands, testing, mistakes, troubleshooting, and the decisions that follow.
 
-- Commands that were actually used
-- Validation steps
-- Configuration decisions
-- Useful failures
-- Troubleshooting
-- Root-cause analysis
-- Recovery decisions
-- Security-event evidence
-- Skills demonstrated
+Not every experiment works the first time, and I don't see much value in pretending otherwise. In many cases, figuring out why something failed is more interesting than the original installation.
 
-Where an exact historical command was not preserved, I avoid presenting a reconstructed command as though it came directly from shell history.
+I also try to distinguish between work I've completed, work that's in progress, and things I'm only considering.
 
-Passwords, tokens, generated credentials, and other sensitive values are excluded from the repository.
-
----
-
-## Why I Built This
-
-Most of this equipment started as a collection of old laptops, Raspberry Pis, mini PCs, Windows systems, switches, and other hardware in my garage behind an AT&T fiber connection.
-
-Rather than replace everything with enterprise hardware, I wanted to see how far I could take the equipment I already had.
-
-The project gives me a place to:
-
-- Practice Linux and systems administration
-- Learn network design and troubleshooting
-- Work with virtualization and clustering
-- Generate and investigate security telemetry
-- Practice SOC-style alert analysis
-- Test monitoring tools
-- Document problems and their resolution
-- Build practical experience that can be shown to prospective employers
-
-The lab will continue to evolve as additional networking, monitoring, and security components are added.
+The goal is to keep the repository useful as both a technical reference for myself and a record of the practical work I've done.
