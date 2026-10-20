@@ -9,6 +9,7 @@ The segmented lab network is operational. The original flat `192.168.1.0/24` net
 | AT&T gateway | `192.168.1.254`; household Internet edge |
 | TRENDnet TEG-S160G | Unmanaged flat-LAN switch |
 | `sw01` Cisco SG350-10 | Managed VLAN switch at `192.168.1.21/24` |
+| `sw02` UniFi US-8 | Managed switch at `192.168.1.22`; adopted by `unifi01` controller at `192.168.1.23:11443` |
 | `fw01` | OPNsense VM 220 on `pve01`; `192.168.1.187` flat/WAN and `10.10.10.1` LABMGMT |
 | Proxmox `vmbr0` | Flat management path on `192.168.1.0/24` |
 | Proxmox `vmbr1` | VLAN-aware guest path through `sw01` |
@@ -20,8 +21,11 @@ The segmented lab network is operational. The original flat `192.168.1.0/24` net
 | Gi1 | `pve01` secondary Ethernet / `vmbr1` | Up, trunk |
 | Gi2 | `pve02` secondary Ethernet / `vmbr1` | Up, trunk |
 | Gi3 | `pve03` secondary Ethernet / `vmbr1` | Up, trunk |
-| Gi4 | `pve04` secondary Ethernet / `vmbr1` | Up, trunk |
+| Gi4 | `pve04` secondary Ethernet / `vmbr1` | Trunk |
+| Gi5 | `sw02` UniFi US-8 port 1 | Trunk |
 | Gi8 | Upstream to the unmanaged flat-LAN switch | Up, root port |
+
+On `sw02`, port 1 is the uplink trunk and ports 2–8 are configured as access ports on VLAN 1. These are recorded configuration details; verify operational link status before depending on them for a migration.
 
 The switch runs RSTP. On 2026-09-11, Gi8 showed no FCS, collision, carrier, symbol, or pause-frame errors. The exact initiator of that morning's transient Layer-2 disruption could not be proven because the unmanaged switch has no logs and the AT&T gateway had already discarded the relevant history.
 
@@ -65,6 +69,10 @@ ssh -N -L 8443:10.10.10.1:443 root@192.168.1.10
 ```
 
 Then browse to `https://localhost:8443`.
+
+## Planned Default-LAN Renumbering
+
+The move from the household/default `192.168.1.0/24` network to a less common range such as `192.168.11.0/24` is **planned, not implemented**. It is separate from the already created VLANs 10 Management, 20 Servers, 30 Users, 40 SOC/Security, 50 Attack/Test, and 60 Guest. Changing the flat LAN will require reviewing the AT&T gateway, static addresses, Proxmox cluster networking, DNS, OPNsense routing, Tailscale subnet advertisements, switch management, firewall rules, monitoring, and rollback access. The address candidate is not a committed IP assignment.
 
 ## Migration Control
 
