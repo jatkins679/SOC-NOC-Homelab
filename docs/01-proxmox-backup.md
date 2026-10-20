@@ -2,590 +2,272 @@
 
 ## Overview
 
-Before rebuilding the existing Proxmox hosts for the new SOC/NOC homelab, I wanted to make sure that the current virtual machines, LXC containers, host configuration, and locally stored installation media were identified and protected.
+Before rebuilding my Proxmox hosts for the SOC/NOC homelab, I needed to know what was running on the existing systems, where the data was stored, and whether I could recover it if something went wrong.
 
-The objective:
+The equipment was already hosting services I used around the house, including Windows VMs, Pi-hole, Kali Linux, Channels DVR, WatchYourLAN, and FreePBX.
 
-> **Do not make destructive changes to an existing virtualization host until I know what is running on it, where its data is stored, and whether I can recover it.**
+I didn't want to start reinstalling Proxmox or moving workloads until I had a reasonably complete inventory and usable backups.
 
-This phase involved:
+This document covers the preparation and initial recovery work. A separate document covers a later, more structured restore test of my Docker VM.
 
-- Identifying the Proxmox host’s network configuration
-- Inventorying virtual machines and LXC containers
-- Identifying configured Proxmox storage
-- Inspecting locally stored ISO images
-- Verifying the remote backup destination
-- Backing up Proxmox guests
-- Backing up the Proxmox host configuration
-- Inspecting backup contents
-- Performing recovery/restoration testing
-- Verifying backups before proceeding with the homelab rebuild
+[Proxmox Backup and Restore Validation](21-proxmox-backup-restore-validation.md)
 
-## Why Back Up the Existing Environment?
+---
 
-The existing Proxmox server was already hosting several services used on my home network:
+## 1. Inventory the Existing Hosts
 
-- Windows VMs
-- Kali Linux VM
-- Pi-hole LXC
-- WatchYourLAN LXC
-- Channels DVR LXC
-- FreePBX VM
+I started by checking the host's network interfaces, addressing, hardware, and persistent configuration.
 
-Before repurposing the physical hardware, I needed to make sure that I could recover those services if something went wrong.
+### Network Configuration
 
-This was particularly important because the planned redesign involves:
+```bash
+ip -br link
+ip -br addr
+cat /etc/network/interfaces
+```
 
-- Reinstalling Proxmox hosts
-- Moving services between physical systems
-- Creating a multi-node Proxmox cluster
-- Changing network addressing
-- Introducing VLANs
-- Moving some services from virtual machines or containers to physical hardware
+The first two commands provided a quick look at active interfaces and assigned IP addresses. The third showed the persistent Debian/Proxmox network configuration, including bridges, physical interface assignments, and gateway settings.
 
-I wanted to confirm that the backups were not only created successfully, but could also be inspected and restored if needed. The process therefore included backup verification and recovery testing before any destructive changes were made.
+I wanted to preserve that information because the rebuild would involve changing physical connections, adding cluster nodes, and eventually introducing VLANs.
 
-# 1. Inventory the Existing Proxmox Host
+To identify physical Ethernet hardware:
 
-Before changing anything, I collected information about the host.
+```bash
+lspci | grep -i ethernet
+```
 
-## Inspect Network Interfaces
+This was useful because the Proxmox hosts have multiple virtual and physical network interfaces.
 
-    ip -br link
+I also inspected an existing tunnel interface:
 
-### Purpose
+```bash
+ip addr show tun0
+ip route | grep tun0
+```
 
-Display a list of the host’s network interfaces and their current state.
+These commands helped identify the interface's current address and any routes depending on it.
 
-This was useful for identifying:
+### Virtual Machines and Containers
 
-- Physical Ethernet interfaces
-- Linux bridges
-- Tunnel interfaces
-- Virtual interfaces associated with VMs and containers
-- Interfaces that were UP or DOWN
+```bash
+qm list
+pct list
+```
 
-### Skill Demonstrated
+These gave me separate inventories of the QEMU/KVM virtual machines and LXC containers.
 
-- Linux networking
-- Interface identification
-- Infrastructure discovery
+I needed to know which guests existed, their VMIDs, and whether they were running before deciding what to back up or relocate.
 
-## Record IP Addressing
+### Host Resources
 
-    ip -br addr
+```bash
+free -h
+```
 
-### Purpose
+I checked available memory and swap as part of understanding the existing host's resource usage.
 
-Display the IP addresses assigned to each interface.
+---
 
-I wanted a record of the current addressing before making changes to the Proxmox networking configuration.
+## 2. Inspect Storage
 
-### Skill Demonstrated
+Before starting backups, I checked which storage targets Proxmox recognized and whether they were available.
 
-- TCP/IP
-- Linux network administration
-- Configuration documentation
+```bash
+pvesm status
+ls -lah /mnt/pve/
+```
 
-## Inspect the Proxmox Network Configuration
+The first command showed storage configuration, status, capacity, and utilization.
 
-    cat /etc/network/interfaces
+The second let me inspect the mounted storage paths directly.
 
-### Purpose
+I also checked the locally stored installation media:
 
-Review the persistent Debian/Proxmox network configuration.
+```bash
+ls -lh /var/lib/vz/template/iso/
+```
 
-This allowed me to identify:
+Some of those ISO files could be useful when rebuilding or recovering the virtual machines.
 
-- Physical interfaces
-- Linux bridges
-- Static addressing
-- Gateway configuration
-- Existing Proxmox networking relationships
+### Remote Backup Storage
 
-### Why This Matters
+The backup target was the Windows-based storage system associated with my Dell PowerEdge T20.
 
-The output of `ip addr` shows the current state of the system, while `/etc/network/interfaces` shows how the host is configured to establish networking after boot.
+At the time, the target was named:
 
-Both are useful when documenting or rebuilding a Proxmox host.
+```text
+t20-backup
+```
 
-### Skill Demonstrated
+I checked whether Proxmox could enumerate its contents:
 
-- Debian networking
-- Proxmox networking
-- Linux bridge configuration
-- Infrastructure documentation
+```bash
+pvesm list t20-backup
+```
 
-## Identify Physical Ethernet Hardware
+This was an important distinction. Seeing a mounted directory isn't quite the same as confirming that Proxmox recognizes the storage target and can read its registered backup content.
 
-    lspci | grep -i ethernet
+The storage configuration has evolved since this initial work. The later shared backup target is named `t-20-backup`.
 
-### Purpose
+---
 
-Identify the Ethernet controllers installed in the host.
+## 3. Back Up the Guests
 
-This helped distinguish physical network hardware from the many virtual interfaces visible on a Proxmox system.
+The documented VM and container IDs identified for backup included:
 
-### Skill Demonstrated
+```text
+100 101 102 103 104 105 109
+```
 
-- Linux hardware discovery
-- NIC identification
-- Troubleshooting
+Proxmox uses `vzdump` for backing up virtual machines and LXC containers.
 
-## Inspect an Existing Tunnel Interface
+The following is a reconstruction based on my notes, not a preserved copy of the original shell command:
 
-    ip addr show tun0
+```bash
+vzdump 100 101 102 103 104 105 109 \
+  --storage t20-backup \
+  --compress zstd \
+  --mode snapshot
+```
 
-and:
+The options specify the backup destination, Zstandard compression, and snapshot backup mode.
 
-    ip route | grep tun0
+Snapshot mode can reduce interruption to running guests, although its behavior and consistency depend on the guest and storage configuration.
 
-### Purpose
+The key objective was to get backups onto storage separate from the physical host I intended to rebuild.
 
-Inspect the configuration and routing associated with the existing `tun0` interface before modifying the host.
+---
 
-The first command examined the interface itself, while the second looked for routes associated with it.
+## 4. Back Up the Host Configuration
 
-### Skill Demonstrated
+VM and container backups don't preserve everything needed to rebuild a Proxmox host.
 
-- Linux routing
-- Tunnel interfaces
-- Network troubleshooting
+I therefore created a separate archive of the host configuration, including information useful for reconstructing network, storage, and Proxmox settings.
 
-# 2. Inventory Proxmox Guests
+I verified that the archive existed using:
 
-The next step was to determine exactly what Proxmox was hosting.
+```bash
+ls -lh /root/*host-config-2026-08-11.tar.gz
+```
 
-## List QEMU/KVM Virtual Machines
+This confirmed that a matching archive file was present. It did not, by itself, prove the archive was complete or usable.
 
-    qm list
+The exact command originally used to produce the archive wasn't preserved in my notes, so I haven't reconstructed it as though it were copied from the terminal.
 
-### Purpose
+---
 
-List all QEMU/KVM virtual machines registered on the Proxmox host.
+## 5. Inspect the Backups
 
-The command provides information such as:
+After producing the backups, I wanted to confirm that Proxmox could do more than simply list the resulting files.
 
-- VM ID
-- VM name
-- Status
-- Allocated memory
-- Disk usage
-- Process ID when running
+I used `pvesm extractconfig` to inspect guest configuration information contained in backup archives.
 
-### Why I Used It
+The command takes a backup archive reference, for example:
 
-I wanted a complete VM inventory before beginning the backup and migration process.
+```bash
+pvesm extractconfig <backup-archive>
+```
 
-### Skill Demonstrated
+This allowed me to check whether the guest configuration metadata could be read.
 
-- Proxmox VE administration
-- QEMU/KVM virtual machine management
-- Infrastructure inventory
+I also experimented with shell pipelines, `awk`, and loops to process multiple backup entries.
 
-## List LXC Containers
+The full original inspection script wasn't retained, so I'm not including an invented version of it here.
 
-    pct list
+Being able to extract the configuration is useful evidence, but it isn't a substitute for restoring the actual workload.
 
-### Purpose
+---
 
-List all LXC containers registered on the Proxmox host.
+## 6. Restoration Testing
 
-This was particularly important because several home-network services were running as Proxmox containers.
+The next step was recovery testing.
 
-### Skill Demonstrated
+For LXC containers, the commands involved included:
 
-- Proxmox VE administration
-- LXC container administration
-- Service inventory
+```bash
+pct restore
+pct set
+pct start
+pct exec
+```
 
-# 3. Inspect Host Resources
+These tools allow a container to be restored, its configuration adjusted, the container started, and commands run inside it.
 
-## Check Memory
+For QEMU/KVM guests with the QEMU Guest Agent available, I also used:
 
-    free -h
+```bash
+qm guest exec
+```
 
-### Purpose
+The work helped establish a basic recovery process rather than relying entirely on whether a backup job reported success.
 
-Display current RAM and swap utilization in human-readable format.
+The original notes do not preserve a complete end-to-end transcript for every guest restored during this phase.
 
-This gave me a quick view of the resources available on the physical Proxmox host before migration and restoration work.
+A later test, performed on August 26, 2026, provides more complete evidence: I restored Docker VM 210 to temporary VMID 910, isolated it from the network, and verified its services before removing the temporary guest.
 
-### Skill Demonstrated
+[Read the restore test](21-proxmox-backup-restore-validation.md)
 
-- Linux resource monitoring
-- Capacity assessment
-- Systems administration
+---
 
-# 4. Inventory Proxmox Storage
+## 7. Backup Validation
 
-## Check Configured Storage
+The process established several checks I continue to use when evaluating backups.
 
-    pvesm status
+1. Confirm the backup job completed successfully.
+2. Verify the resulting archive exists on the intended storage target.
+3. Confirm the backup isn't stored exclusively on the system being rebuilt.
+4. Check whether Proxmox can recognize and read the backup.
+5. Inspect the guest configuration when applicable.
+6. Restore a guest into a suitable test environment.
+7. Verify that the restored operating system and required services function.
 
-### Purpose
+The last two steps are particularly important. A backup archive is useful only if I can recover the workload it contains.
 
-Display the storage resources configured in Proxmox and their current status.
+---
 
-This helped identify:
+## 8. Commands Reference
 
-- Local storage
-- Backup storage
-- Storage availability
-- Capacity
-- Utilization
+| Command | Purpose |
+|---|---|
+| `ip -br link` | List network interfaces |
+| `ip -br addr` | Inspect IP addresses |
+| `cat /etc/network/interfaces` | Review persistent network configuration |
+| `lspci \| grep -i ethernet` | Identify Ethernet controllers |
+| `ip addr show tun0` | Inspect a tunnel interface |
+| `ip route \| grep tun0` | Inspect tunnel-related routes |
+| `qm list` | Inventory virtual machines |
+| `pct list` | Inventory LXC containers |
+| `free -h` | Check memory usage |
+| `pvesm status` | Inspect Proxmox storage |
+| `ls -lah /mnt/pve/` | Inspect mounted storage |
+| `ls -lh /var/lib/vz/template/iso/` | Inventory installation media |
+| `pvesm list t20-backup` | List registered backup content |
+| `vzdump` | Back up guests |
+| `pvesm extractconfig` | Extract guest configuration from backup |
+| `pct restore` | Restore a container |
+| `pct set` | Change container configuration |
+| `pct start` | Start a container |
+| `pct exec` | Execute a command in a container |
+| `qm guest exec` | Run a command through the QEMU Guest Agent |
 
-### Why This Matters
+---
 
-Before creating backups, I needed to make sure the intended destination was actually available to Proxmox.
+## 9. Outcome
 
-### Skill Demonstrated
+This initial work established an inventory of the existing Proxmox environment and a basic backup and recovery procedure before I began repurposing the hardware.
 
-- Proxmox storage administration
-- Capacity management
-- Backup preparation
+I documented the guest IDs, storage targets, host configuration, and relevant commands. I also performed recovery work and started verifying that backups could be inspected and restored.
 
-## Inspect Mounted Proxmox Storage
+There are still a few gaps in the original notes, particularly the exact historical commands used for some operations.
 
-    ls -lah /mnt/pve/
+I'm keeping those gaps visible rather than replacing them with commands I can't verify.
 
-### Purpose
+The later isolated Docker VM restore test gave me a better, repeatable method for validating backups.
 
-Inspect storage mounted beneath Proxmox’s `/mnt/pve` directory.
-
-This provided another way to verify that the expected storage was mounted and accessible from the host operating system.
-
-### Skill Demonstrated
-
-- Linux filesystem administration
-- Storage troubleshooting
-- Proxmox storage verification
-
-# 5. Inventory Installation Media
-
-## List Local ISO Images
-
-    ls -lh /var/lib/vz/template/iso/
-
-### Purpose
-
-Identify ISO images stored locally on the Proxmox host.
-
-These files may be needed again when rebuilding virtual machines after the Proxmox host is reconfigured.
-
-### Skill Demonstrated
-
-- Linux filesystem navigation
-- Proxmox storage layout
-- Migration preparation
-
-# 6. Verify the Remote Backup Destination
-
-A remote backup target named:
-
-    t20-backup
-
-was being used for Proxmox backups.
-
-## List Backups on the Storage Target
-
-    pvesm list t20-backup
-
-### Purpose
-
-Ask Proxmox to enumerate the content stored on the `t20-backup` storage target.
-
-This was more useful than simply proving that a directory existed because it verified that Proxmox itself recognized and could access the backup content.
-
-### Skill Demonstrated
-
-- Proxmox storage administration
-- Remote backup verification
-- Disaster-recovery preparation
-
-# 7. Back Up the Proxmox Guests
-
-Proxmox provides the `vzdump` utility for creating backups of virtual machines and LXC containers.
-
-The guest IDs identified for backup during this phase included:
-
-    100
-    101
-    102
-    103
-    104
-    105
-    109
-
-## Reconstructed Backup Command
-
-Based on the documented guest IDs, backup destination, compression method, and snapshot mode, the command used for this backup was reconstructed as follows:
-
-    vzdump 100 101 102 103 104 105 109 \
-      --storage t20-backup \
-      --compress zstd \
-      --mode snapshot
-
-## Options Used
-
-### `--storage t20-backup`
-
-Store the backups on the configured `t20-backup` target rather than on the local Proxmox disk.
-
-### `--compress zstd`
-
-Use Zstandard compression for the backup archives.
-
-### `--mode snapshot`
-
-Create backups using Proxmox snapshot mode where supported.
-
-This allows a running guest to be backed up with less interruption than a stop-mode backup.
-
-# 8. Back Up the Proxmox Host Configuration
-
-In addition to the VMs and containers, I created a separate archive of the Proxmox host configuration.
-
-This is important because guest backups do not by themselves preserve every useful piece of information about the physical Proxmox host.
-
-Configuration worth preserving includes items such as:
-
-- Network configuration
-- Storage configuration
-- Proxmox configuration files
-- Host-specific settings
-- Cluster-related configuration where applicable
-
-## Verify the Host Configuration Archive
-
-The resulting configuration archive was verified with:
-
-    ls -lh /root/*host-config-2026-08-11.tar.gz
-
-### Purpose
-
-Confirm that the host-configuration archive existed and had been written to disk.
-
-### Skill Demonstrated
-
-- Linux backup administration
-- File verification
-- Disaster-recovery planning
-
-# 9. Inspect Backup Configuration
-
-Creating a backup file is only one part of a backup process.
-
-I also used Proxmox tools to inspect configuration information contained in the backups.
-
-One of the commands used during this work was:
-
-    pvesm extractconfig ...
-
-### Purpose
-
-Extract guest configuration information from an existing Proxmox backup.
-
-This provides an additional verification step by showing that Proxmox can read metadata from the backup rather than treating it merely as an opaque file.
-
-### Skill Demonstrated
-
-- Proxmox backup inspection
-- Backup validation
-- Disaster-recovery troubleshooting
-
-## Automating Backup Inspection
-
-During the verification process, I also used shell tools including:
-
-    pvesm list
-    awk
-
-and a shell loop of the form:
-
-    while read ...
-
-to process multiple backup entries and inspect their configurations.
-
-### Skill Demonstrated
-
-- Bash shell scripting
-- Pipelines
-- Text processing
-- `awk`
-- Automation
-- Proxmox CLI administration
-
-# 10. Restoration Testing
-
-Backups are much more useful if I know I can restore from them.
-
-During this phase I performed recovery work using Proxmox LXC commands including:
-
-    pct restore ...
-
-### Purpose
-
-Restore an LXC container from a Proxmox backup.
-
-Additional container-management commands used during the recovery/testing process included:
-
-    pct set ...
-    pct start ...
-    pct exec ...
-
-These commands were used to modify restored container settings, start containers, and execute commands inside them as part of validating the restored environment.
-
-For virtual machines, guest interaction also included:
-
-    qm guest exec ...
-
-### Skill Demonstrated
-
-- LXC disaster recovery
-- Proxmox guest administration
-- Post-restore configuration
-- Service validation
-- Troubleshooting
-
-# 11. Backup Verification Strategy
-
-The backup process followed this general workflow:
-
-    Inventory
-       ↓
-    Identify guests and storage
-       ↓
-    Verify backup destination
-       ↓
-    Back up guests
-       ↓
-    Back up host configuration
-       ↓
-    List resulting backups
-       ↓
-    Inspect backup configuration
-       ↓
-    Restore/test selected workloads
-       ↓
-    Verify operation
-       ↓
-    Proceed with rebuild
-
-# 12. Backup Validation Criteria
-
-I used the following questions as validation criteria before proceeding with the rebuild:
-
-1.  Did the backup command complete?
-2.  Does the backup file actually exist?
-3.  Is the backup stored somewhere other than the system being rebuilt?
-4.  Can Proxmox read the backup?
-5.  Can configuration information be extracted from it?
-6.  Can the workload be restored?
-7.  Does the restored workload actually start and function?
-
-# 13. Commands Reference
-
-The principal commands used during this phase are summarized below.
-
-| **Command**                                  | **Purpose**                                                                                                                            |
-|----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `ip -br link` | List network interfaces and their current state.                                                                                       |
-| `ip -br addr` | Display IP addressing assigned to each interface.                                                                                      |
-| `cat /etc/network/interfaces` | Inspect the persistent Debian/Proxmox network configuration.                                                                           |
-| `lspci \` | grep -i ethernet                    | Identify physical Ethernet controllers.                                                                                                |
-| `ip addr show tun0` | Inspect the existing tun0 interface.                                                                                                   |
-| `ip route \` | grep tun0                        | Inspect routes associated with tun0.                                                                                                   |
-| `qm list` | Inventory QEMU/KVM virtual machines.                                                                                                   |
-| `pct list` | Inventory LXC containers.                                                                                                              |
-| `pvesm status` | Review configured Proxmox storage, availability, capacity, and utilization.                                                            |
-| `free -h` | Review RAM and swap utilization.                                                                                                       |
-| `ls -lh /var/lib/vz/template/iso/` | Inventory locally stored ISO images.                                                                                                   |
-| `ls -lah /mnt/pve/` | Inspect storage mounted beneath /mnt/pve.                                                                                              |
-| `pvesm list t20-backup` | List content available on the remote Proxmox backup target.                                                                            |
-| `vzdump 100 101 102 103 104 105 109 ...` | Create guest backups using the documented remote storage, compression, and snapshot options; command reconstructed from project notes. |
-| `ls -lh /root/\*host-config-2026-08-11.tar.gz` | Verify that the host-configuration archive exists.                                                                                     |
-| `pvesm extractconfig ...` | Inspect guest configuration information contained in a backup.                                                                         |
-| `pct restore ...` | Restore an LXC container from backup.                                                                                                  |
-| `pct set ...` | Modify configuration for a restored LXC container.                                                                                     |
-| `pct start ...` | Start an LXC container.                                                                                                                |
-| `pct exec ...` | Execute a command inside an LXC container.                                                                                             |
-| `qm guest exec ...` | Execute a command inside a VM through the QEMU Guest Agent.                                                                            |
-
-# 14. Skills Demonstrated
-
-This phase of the project provided hands-on experience with:
-
-## Proxmox VE
-
-- VM inventory
-- LXC inventory
-- Storage administration
-- Guest backup
-- Backup inspection
-- LXC restoration
-- VM/LXC command-line management
-
-## Linux Administration
-
-- Network interface inspection
-- Routing inspection
-- PCI hardware identification
-- Filesystem navigation
-- File verification
-- Memory/resource inspection
-- Shell pipelines
-- Text processing
-- Bash loops
-
-## Networking
-
-- Interface discovery
-- IP addressing
-- Linux bridges
-- Routing
-- Tunnel-interface inspection
-
-## Backup and Disaster Recovery
-
-- Pre-change inventory
-- Remote backup storage
-- Host configuration backup
-- Guest backup
-- Backup verification
-- Restoration testing
-- Post-restore validation
-
-## Operational Practice
-
-- Change preparation
-- Configuration documentation
-- Troubleshooting
-- Validation before destructive work
-- Recovery planning
-
-# 15. Status
-
-- [x] Inventory existing Proxmox networking
-- [x] Inventory VMs
-- [x] Inventory LXC containers
-- [x] Inspect Proxmox storage
-- [x] Verify remote backup storage
-- [x] Inventory local ISO media
-- [x] Create Proxmox guest backups
-- [x] Create host configuration backup
-- [x] Verify host configuration archive
-- [x] Inspect backup information
-- [x] Perform restoration/recovery work
-- [ ] Recover and document the exact original `vzdump` invocation
-- [ ] Recover the exact host-configuration archive command
-- [ ] Recover the exact backup-inspection pipeline
-- [ ] Add final sanitized command output/screenshots
+---
 
 ## Next Phase
 
-The next phase moves a critical network service — **Pi-hole DNS** — away from the Proxmox environment and onto a dedicated Raspberry Pi.
+With the initial backup preparation completed, the next project was to move Pi-hole DNS off Proxmox and onto a dedicated Raspberry Pi.
 
-See:
-
-[`02-pihole-migration.md`](02-pihole-migration.md)
+[Pi-hole Migration](02-pihole-migration.md)
