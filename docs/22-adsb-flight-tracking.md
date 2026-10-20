@@ -2,6 +2,9 @@
 
 ## Purpose
 
+ADS-B (Automatic Dependent Surveillance–Broadcast) is a system aircraft use to broadcast their position, altitude, speed, and other flight information. A receiver on the ground can pick up those radio transmissions and display nearby aircraft on a map. In my lab, a USB radio receives the signals, `readsb` decodes them, and the data is displayed locally and shared with flight-tracking services.
+
+
 `adsb01` provides local ADS-B aircraft reception and feeds aircraft data to
 FlightAware and Flightradar24.
 
