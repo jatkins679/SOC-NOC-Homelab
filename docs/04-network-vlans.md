@@ -1,83 +1,345 @@
-# Cisco Switching, VLANs, and OPNsense
+# Managed Switching, VLANs, and OPNsense
 
-## Current State
+## Overview
 
-The segmented lab network is operational. The original flat `192.168.1.0/24` network remains the Proxmox management and household network, while selected guests use tagged VLANs on `vmbr1`. OPNsense `fw01` routes and filters traffic between the VLANs and the flat network.
+The homelab originally used the same flat network as the rest of my house.
 
-| Component | Current role |
-|---|---|
-| AT&T gateway | `192.168.1.254`; household Internet edge |
-| TRENDnet TEG-S160G | Unmanaged flat-LAN switch |
-| `sw01` Cisco SG350-10 | Managed VLAN switch at `192.168.1.21/24` |
-| `sw02` UniFi US-8 | Managed switch at `192.168.1.22`; adopted by `unifi01` controller at `192.168.1.23:11443` |
-| `fw01` | OPNsense VM 220 on `pve01`; `192.168.1.187` flat/WAN and `10.10.10.1` LABMGMT |
-| Proxmox `vmbr0` | Flat management path on `192.168.1.0/24` |
-| Proxmox `vmbr1` | VLAN-aware guest path through `sw01` |
+Everything was connected through unmanaged switches and used addresses in `192.168.1.0/24`.
 
-## Physical Port Map
+That was sufficient when I was running a handful of virtual machines, but it became less useful as I added security-testing systems, monitoring servers, Windows Active Directory, and more network services.
 
-| `sw01` port | Connection | State |
+I wanted to separate different kinds of traffic, control which systems could communicate, and gain practical experience configuring managed switches, VLANs, and a firewall.
+
+I now use a Cisco SG350-10, a UniFi US-8, and OPNsense to support the segmented portion of the lab.
+
+The original LAN remains operational, while selected virtual machines use separate VLANs. The migration is ongoing.
+
+---
+
+## 1. Network Overview
+
+The main network components are:
+
+| Device | IP address | Role |
 |---|---|---|
-| Gi1 | `pve01` secondary Ethernet / `vmbr1` | Up, trunk |
-| Gi2 | `pve02` secondary Ethernet / `vmbr1` | Up, trunk |
-| Gi3 | `pve03` secondary Ethernet / `vmbr1` | Up, trunk |
-| Gi4 | `pve04` secondary Ethernet / `vmbr1` | Trunk |
-| Gi5 | `sw02` UniFi US-8 port 1 | Trunk |
-| Gi8 | Upstream to the unmanaged flat-LAN switch | Up, root port |
+| AT&T BGW320 gateway | `192.168.1.254` | Household Internet gateway |
+| `sw-home01` | Unmanaged | TRENDnet TEG-S160G |
+| `sw01` | `192.168.1.21` | Cisco SG350-10 managed switch |
+| `sw02` | `192.168.1.22` | UniFi US-8 managed switch |
+| `unifi01` | `192.168.1.23` | UniFi controller |
+| `fw01` | `192.168.1.187` | OPNsense firewall, flat-network interface |
 
-On `sw02`, port 1 is the uplink trunk and ports 2–8 are configured as access ports on VLAN 1. These are recorded configuration details; verify operational link status before depending on them for a migration.
+OPNsense also has an internal management interface at `10.10.10.1`.
 
-The switch runs RSTP. On 2026-09-11, Gi8 showed no FCS, collision, carrier, symbol, or pause-frame errors. The exact initiator of that morning's transient Layer-2 disruption could not be proven because the unmanaged switch has no logs and the AT&T gateway had already discarded the relevant history.
+The Proxmox hosts use two separate networking paths.
 
-## VLAN Matrix
+**`vmbr0`** carries the existing management and flat-LAN connectivity.
 
-| VLAN | OPNsense interface | Zone | Subnet | Gateway | Current guest |
-|---:|---|---|---|---|---|
-| 10 | `lan` / LABMGMT | Management | `10.10.10.0/24` | `10.10.10.1` | OPNsense management |
-| 20 | `opt1` / SERVERS | Servers | `10.10.20.0/24` | `10.10.20.1` | `dc01` — `10.10.20.10` |
-| 30 | `opt2` / USERS | Users | `10.10.30.0/24` | `10.10.30.1` | `win11-01` — `10.10.30.160` |
-| 40 | `opt3` / SOCNOC | Monitoring | `10.10.40.0/24` | `10.10.40.1` | `nms01` — `10.10.40.10`; `wazuh01` — `10.10.40.20` |
-| 50 | `opt4` / RED | Attack lab | `10.10.50.0/24` | `10.10.50.1` | `kali01` — `10.10.50.113` |
-| 60 | `opt5` / DMZRANGE | Vulnerable targets | `10.10.60.0/24` | `10.10.60.1` | `target01` — `10.10.60.10` |
+**`vmbr1`** provides VLAN-aware connectivity through the managed switch infrastructure.
 
-## Proxmox Guest Attachment
+This lets me introduce VLANs without immediately moving every device off the original network.
 
-| VM | VMID / node | Bridge and tag |
+---
+
+## 2. Physical Switching
+
+The Cisco SG350-10 is the main managed switch for the lab.
+
+Its current documented connections are:
+
+| Port | Connection | Configuration |
 |---|---|---|
-| `dc01` | 100 / `pve01` | `vmbr1`, VLAN 20 |
-| `win11-01` | 101 / `pve01` | `vmbr1`, VLAN 30 |
-| `fw01` | 220 / `pve01` | `vmbr0` plus untagged/trunk `vmbr1` |
-| `kali01` | 300 / `pve02` | `vmbr1`, VLAN 50 |
-| `target01` | 400 / `pve02` | `vmbr1`, VLAN 60 |
-| `nms01` | 102 / `pve03` | `vmbr1`, VLAN 40 |
-| `wazuh01` | 500 / `pve03` | legacy `vmbr0` plus `vmbr1`, VLAN 40 |
+| Gi1 | `pve01` secondary Ethernet | Trunk |
+| Gi2 | `pve02` secondary Ethernet | Trunk |
+| Gi3 | `pve03` secondary Ethernet | Trunk |
+| Gi4 | `pve04` secondary Ethernet | Trunk |
+| Gi5 | `sw02` UniFi US-8 | Trunk |
+| Gi8 | Existing flat-LAN switch | Uplink |
 
-## Firewall Policy Principles
+On the UniFi US-8, port 1 is the trunk uplink to `sw01`.
 
-- Rules are applied on the source interface and permit only documented service flows.
-- VLAN 50 and VLAN 60 remain restricted except for explicit attack-lab and telemetry paths.
-- Wazuh agents use TCP 1514 to `10.10.40.20`; TCP 1515 is allowed only where enrollment is required.
-- Trusted traffic that enters OPNsense through the flat/WAN interface must use **Disable reply-to** when the source's normal gateway is the AT&T router. Without it, OPNsense can force replies toward the wrong gateway and break otherwise permitted TCP sessions.
-- Every permitted flow must be tested from its actual source and, when needed, verified with OPNsense live logs or packet capture.
+Ports 2–8 are currently configured as access ports on VLAN 1.
 
-## Management Access
+### Trunk and Access Ports
 
-From John's Mac, create the OPNsense GUI tunnel and keep the terminal open:
+An access port carries traffic for one VLAN and normally presents it untagged to the connected device.
+
+A trunk carries traffic for multiple VLANs using IEEE 802.1Q tags.
+
+The trunks between `sw01` and the Proxmox nodes allow virtual machines assigned to different VLANs to share a physical network connection.
+
+The same principle applies to the trunk connecting `sw01` and `sw02`.
+
+The documented port configuration should be checked against the live switch state before making physical or VLAN changes.
+
+---
+
+## 3. VLAN Design
+
+I divided the lab into six logical networks.
+
+| VLAN | Name | Subnet | Gateway |
+|---|---|---|---|
+| 10 | Management | `10.10.10.0/24` | `10.10.10.1` |
+| 20 | Servers | `10.10.20.0/24` | `10.10.20.1` |
+| 30 | Users | `10.10.30.0/24` | `10.10.30.1` |
+| 40 | SOC/Security | `10.10.40.0/24` | `10.10.40.1` |
+| 50 | Attack/Test | `10.10.50.0/24` | `10.10.50.1` |
+| 60 | Guest/Targets | `10.10.60.0/24` | `10.10.60.1` |
+
+The first objective was to separate systems by function.
+
+The second was to make the communication between those networks explicit rather than allowing everything to reach everything else.
+
+### Management — VLAN 10
+
+Used for management interfaces and administrative services.
+
+Examples include the OPNsense management interface and NetBox.
+
+### Servers — VLAN 20
+
+Used for infrastructure servers such as the Active Directory domain controller.
+
+### Users — VLAN 30
+
+Used for Windows and other client systems.
+
+### SOC/Security — VLAN 40
+
+Used for security and monitoring services, including Wazuh and LibreNMS.
+
+### Attack/Test — VLAN 50
+
+Used for Kali Linux and other controlled security-testing systems.
+
+### Guest/Targets — VLAN 60
+
+Used for test targets and systems that should be separated from the rest of the network.
+
+The names describe the intended functions. Actual permitted connectivity is determined by the firewall rules, not by the VLAN names alone.
+
+---
+
+## 4. Guest Network Assignments
+
+Some virtual machines have already been moved onto the segmented network.
+
+The documented assignments include:
+
+| Host | IP address | VLAN |
+|---|---|---|
+| `dc01` | `10.10.20.10` | 20 |
+| `win11-01` | `10.10.30.160` | 30 |
+| `nms01` | `10.10.40.10` | 40 |
+| `wazuh01` | `10.10.40.20` | 40 |
+| `kali01` | `10.10.50.113` | 50 |
+| `target01` | `10.10.60.10` | 60 |
+| `nb01` | `10.10.10.15` | 10 |
+
+These are the documented lab addresses, rather than a live discovery of every system.
+
+Some hosts may retain legacy interfaces or addresses while the migration is being completed.
+
+### Proxmox Configuration
+
+For a VLAN-assigned guest, Proxmox connects its virtual NIC to `vmbr1` and applies the appropriate VLAN tag.
+
+For example:
+
+```text
+win11-01
+    |
+Proxmox virtual NIC — VLAN 30
+    |
+vmbr1
+    |
+sw01 trunk
+    |
+OPNsense — 10.10.30.1
+```
+
+That virtual machine can use its VLAN gateway to reach other permitted networks.
+
+The original `vmbr0` path remains separate from this VLAN-aware guest network.
+
+---
+
+## 5. OPNsense Routing
+
+OPNsense runs as VM 220 (`fw01`) on `pve01`.
+
+It connects the VLANs and applies the firewall rules controlling traffic between them.
+
+The original flat-network interface uses:
+
+`192.168.1.187`
+
+The internal management interface uses:
+
+`10.10.10.1`
+
+Each segmented network has an OPNsense gateway address.
+
+For example, traffic from a client on VLAN 30 to a service on VLAN 40 normally passes through OPNsense.
+
+That gives me a place to control and inspect the communication.
+
+### Firewall Policy
+
+The general approach is to permit the traffic a system needs rather than simply allowing unrestricted communication between VLANs.
+
+Examples include:
+
+- Allowing clients to reach required DNS and domain services
+- Allowing Wazuh agents to reach the Wazuh manager
+- Allowing trusted management systems to reach administrative interfaces
+- Restricting communication from attack and test networks
+- Checking firewall logs when expected traffic fails
+
+Wazuh agent traffic normally uses TCP port 1514.
+
+Agent enrollment may also require TCP port 1515.
+
+Rules must account for the direction in which traffic begins, since OPNsense evaluates rules on the interface where traffic enters the firewall.
+
+---
+
+## 6. Troubleshooting an OPNsense Routing Problem
+
+One of the more useful problems I encountered involved reaching internal services from a trusted laptop on the original LAN.
+
+The firewall rule appeared to allow the connection, but the TCP session still failed.
+
+I eventually traced the problem to OPNsense's `reply-to` behavior.
+
+The traffic entered OPNsense through its flat-network interface, while the originating laptop normally used the AT&T gateway.
+
+The automatically applied reply-to behavior could force response traffic toward an inappropriate gateway.
+
+Disabling reply-to on the relevant trusted-access rule corrected the return path.
+
+This resolved access problems involving internal services, including NetBox.
+
+The problem was a good example of why checking only whether a firewall rule permits a packet isn't enough. The return path also has to work.
+
+---
+
+## 7. Management Access
+
+OPNsense's internal GUI is available at `10.10.10.1`.
+
+When direct access isn't convenient, I can use an SSH tunnel through `pve01` (`192.168.1.10`).
+
+From a Mac terminal:
 
 ```bash
 ssh -N -L 8443:10.10.10.1:443 root@192.168.1.10
 ```
 
-Then browse to `https://localhost:8443`.
+The tunnel forwards the Mac's local port 8443 to the internal OPNsense HTTPS interface.
 
-## Planned Default-LAN Renumbering
+With the tunnel running, I open:
 
-The move from the household/default `192.168.1.0/24` network to a less common range such as `192.168.11.0/24` is **planned, not implemented**. It is separate from the already created VLANs 10 Management, 20 Servers, 30 Users, 40 SOC/Security, 50 Attack/Test, and 60 Guest. Changing the flat LAN will require reviewing the AT&T gateway, static addresses, Proxmox cluster networking, DNS, OPNsense routing, Tailscale subnet advertisements, switch management, firewall rules, monitoring, and rollback access. The address candidate is not a committed IP assignment.
+`https://localhost:8443`
 
-## Migration Control
+This provides access to the OPNsense GUI without requiring the management interface to be directly reachable from every network.
 
-The guest address change is only one part of a migration. Monitoring databases, agent configuration, remote-access tools, DNS, automation, firewall rules, and documentation must be audited before the old address is removed. Follow [`24-vlan-migration-dependency-checklist.md`](24-vlan-migration-dependency-checklist.md) for every future migration. Remaining remediation is tracked in GitHub issue #1.
+---
 
-## Historical Baseline
+## 8. Network Incident and Diagnostics
 
-Before segmentation, `sw01` used the default VLAN 1 on all ports and OPNsense was only planned. That state is retained in dated build/ticket records; it is no longer the current operating state.
+During the network build, I also encountered a transient Layer-2 disruption on September 11, 2026.
+
+I investigated switch connectivity, interface counters, and spanning-tree behavior.
+
+The Cisco switch runs Rapid Spanning Tree Protocol (RSTP).
+
+The documented inspection of Gi8 showed no FCS, collision, carrier, symbol, or pause-frame errors.
+
+I couldn't conclusively determine the original cause of the disruption because the upstream unmanaged switch had no event logs and the AT&T gateway no longer had the relevant historical information.
+
+I retained the incident in the documentation rather than assigning a cause that couldn't be demonstrated.
+
+---
+
+## 9. Planned Default-LAN Address Change
+
+The original home LAN uses:
+
+`192.168.1.0/24`
+
+While traveling, I encountered a network using the same address range.
+
+That created a routing conflict when I tried to reach the home lab remotely.
+
+I used SSH tunneling and Tailscale to work around the immediate problem, but the experience made me reconsider the default addressing scheme.
+
+One candidate is:
+
+`192.168.11.0/24`
+
+This change is **planned, not implemented**.
+
+It is separate from the existing lab VLANs using the `10.10.x.0/24` networks.
+
+Changing the default LAN will require accounting for more than just the AT&T gateway.
+
+The affected systems and services include:
+
+- Proxmox management addresses and cluster communications
+- Switch management addresses
+- Pi-hole and other statically addressed infrastructure
+- OPNsense routing and firewall rules
+- Tailscale subnet route advertisements
+- DNS records and forwarding configuration
+- Monitoring tools and service integrations
+- Client DHCP and default gateway configuration
+- Remote administration and rollback access
+
+I want to document and validate the dependencies before beginning the renumbering.
+
+The [VLAN Migration Dependency Checklist](24-vlan-migration-dependency-checklist.md) provides the framework for that work.
+
+---
+
+## 10. Migration and Validation Approach
+
+I've been moving services onto the VLANs incrementally rather than trying to change the entire network at once.
+
+For each migration, the basic process is:
+
+1. Record the original interface and address.
+2. Confirm the intended VLAN and gateway.
+3. Check switch port and Proxmox bridge configuration.
+4. Review the required OPNsense rules.
+5. Move or add the network interface.
+6. Verify addressing, gateway access, and DNS.
+7. Test the actual application or monitoring traffic.
+8. Check logs and monitoring systems.
+9. Update inventory and documentation.
+10. Remove the old path only after the replacement works.
+
+This is particularly important for systems used to manage or monitor the rest of the lab.
+
+A service can appear healthy locally while still being unreachable from the systems that depend on it.
+
+---
+
+## 11. Current Result
+
+The lab now has operational managed switching, several VLAN-backed virtual machines, and OPNsense routing between the segmented networks.
+
+The original flat network is still in use, and the migration is not complete.
+
+The next steps are to finish auditing remaining service dependencies, improve documentation of the physical and logical network, and plan the eventual default-LAN address change.
+
+The larger objective is to have a network that's easier to understand, troubleshoot, monitor, and use for security experiments without unnecessarily affecting the rest of the household.
+
+## Related Documentation
+
+- [OPNsense Configuration](05-opnsense.md)
+- [Asset Inventory](02-asset-inventory.md)
+- [VLAN Migration Dependency Checklist](24-vlan-migration-dependency-checklist.md)
+- [Tailscale Remote Access](23-tailscale-remote-access.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
