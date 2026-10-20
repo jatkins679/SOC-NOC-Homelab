@@ -53,6 +53,23 @@ This provides:
 - a clean separation between remote-access networking and experimental VM workloads;
 - a reusable platform for future remote-management testing.
 
+## Separate Mac Connectivity Case: Surfshark VPN (October 10, 2026)
+
+On a Mac connected to Wi-Fi, I could ping the local gateway but couldn't reach the Internet by hostname or by IP address. Because IP connections failed too, this wasn't simply a DNS problem. The cause turned out to be Surfshark: its VPN connection was still active. Disconnecting Surfshark restored Internet access.
+
+This was a separate issue from the overlapping `192.168.1.0/24` networks during travel. The practical diagnostic sequence for a repeat incident is to test the gateway, test a public IP, check DNS only if public IP connectivity works, and inspect the active default route and VPN tunnel interfaces before changing the Wi-Fi or router configuration.
+
+On macOS, useful read-only commands are:
+
+```bash
+route -n get default
+netstat -rn -f inet
+scutil --nwi
+ifconfig | grep -A 4 '^utun'
+```
+
+When a commercial VPN is connected, verify whether it has installed the default route or a traffic-blocking policy. In this case, disconnecting Surfshark was the confirmed fix; no router or Tailscale changes were required.
+
 ## Tailscale vs Commercial VPN
 
 Tailscale is used here for **private remote access into the homelab**.
