@@ -246,6 +246,8 @@ This provided sufficient headroom for additional lightweight SOC/NOC services wh
 
 ## Design Decision: No Ceph
 
+Ceph is a distributed storage system that spreads data across multiple machines. In a Proxmox cluster it can provide shared VM storage and redundancy, but it also needs sufficient disks, network bandwidth, and memory to operate well.
+
 I chose not to deploy Ceph on this cluster.
 
 Although Proxmox supports Ceph for distributed storage and high availability, these nodes are small N95/N97-class systems with limited CPU, memory, network interfaces, and local storage.
