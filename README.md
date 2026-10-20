@@ -62,7 +62,7 @@ The lab currently includes:
 - Browser-based remote administration through Apache Guacamole
 - UPS monitoring / graceful-shutdown foundation through `util01`
 
-Managed switching, VLAN segmentation, and OPNsense routing are operational. The Cisco SG350-10 is `sw01` at `192.168.1.21/24`; Gi1-Gi4 connect the Proxmox secondary Ethernet paths and Gi8 connects upstream to the unmanaged flat-LAN segment. Existing `vmbr0` management traffic remains on the TRENDnet switch and `192.168.1.0/24`, while selected guests use tagged VLANs 20-60 through `vmbr1` and OPNsense `fw01`.
+Managed switching, VLAN segmentation, and OPNsense routing are operational. The Cisco SG350-10 is `sw01` at `192.168.1.21/24`; Gi1-Gi4 connect the Proxmox secondary Ethernet paths, Gi5 connects to the UniFi US-8 (`sw02`, `192.168.1.22`), and the existing flat-LAN uplink is documented on Gi8. Existing `vmbr0` management traffic remains on the TRENDnet switch and `192.168.1.0/24`, while selected guests use tagged VLANs 20-60 through `vmbr1` and OPNsense `fw01`.
 
 ---
 
@@ -532,6 +532,8 @@ MITRE T1531 - Account Access Removal
 
 #### [22 - ADS-B Flight Tracking Receiver](docs/22-adsb-flight-tracking.md)
 
+ADS-B is a radio broadcast from aircraft containing information such as position, altitude, and speed. My receiver picks up those signals, plots nearby aircraft on a local map, and forwards data to flight-tracking services.
+
 Documents the migration of the ADS-B receiver from a Raspberry Pi to the
 `adsb01` Debian 13 VM on `pve03`.
 
@@ -559,7 +561,8 @@ Current systems include:
 - Raspberry Pi used for DNS
 - Additional Raspberry Pi hardware, including the former ADS-B receiver now available for repurposing
 - TRENDnet TEG-S160G unmanaged switch (`sw-home01`) for the existing home network
-- Cisco SG350-10 managed switch (`sw01`), operational as the managed homelab switching platform
+- Cisco SG350-10 managed switch (`sw01`, `192.168.1.21`), operational as the managed homelab switching platform
+- UniFi US-8 managed switch (`sw02`, `192.168.1.22`), adopted into the UniFi controller (`unifi01`, `192.168.1.23:11443`)
 - GL.iNet hardware for network experimentation / backup connectivity
 
 `sw01` is not presented as the household switch replacement. The current home
@@ -594,7 +597,7 @@ Backups use finite retention (`keep-last=7`, `keep-weekly=4`,
 `keep-monthly=3`) and run as staggered per-node jobs rather than four concurrent
 writes to the USB-backed target.
 
-Ceph is intentionally not used. The current mini-PC hardware and lab scale do not justify the additional resource and storage overhead.
+Ceph is intentionally not used. Ceph is a distributed storage platform that can make VM disks available across cluster nodes with redundancy. The current mini-PC hardware and lab scale do not justify the additional resource and storage overhead.
 
 ---
 
