@@ -1,285 +1,144 @@
 # Homelab Operations and Health Checklist
 
-## Purpose
+## Overview
 
-This document defines the routine operational checks used to keep the SOC/NOC
-homelab healthy after deployment.
+Building services in the homelab is one thing. Keeping them running, checking their health, and noticing when something changes is a different part of the work.
 
-The objective is to practice the kind of recurring operational discipline used
-in NOC, SOC, systems-administration, and infrastructure-support roles:
+I've gradually added several monitoring systems and administrative tools to help with that.
 
-- confirm important systems are reachable;
-- verify critical services are running;
-- identify capacity problems before they become outages;
-- confirm backups remain accessible;
-- detect missing security telemetry;
-- validate Windows/Active Directory health;
-- document exceptions and follow-up work.
+These include LibreNMS, Uptime Kuma, Prometheus, Grafana, Wazuh, and a set of health-check scripts and Ansible playbooks.
 
-This checklist is based on the services currently implemented, including the
-Cisco SG350-10, VLANs 20-60, and OPNsense routing. Zabbix and other explicitly
-planned services remain excluded until deployed and validated.
+This document records the recurring checks I use or have configured, along with the manual checks I want to perform during regular maintenance.
+
+Not every check is automated. Some are periodic review tasks, while others are part of the lab's existing monitoring configuration.
 
 ---
 
-# 1. Current Critical Systems
+## 1. Main Operational Systems
 
-| System | Role | Address |
-|---|---|---:|
-| `pve01` | Proxmox VE cluster node | `192.168.1.10` |
-| `pve02` | Proxmox VE cluster node | `192.168.1.11` |
-| `pve03` | Proxmox VE cluster node | `192.168.1.12` |
-| `pve04` | Proxmox VE cluster node | `192.168.1.13` |
-| `mgmt01` | Independent management / health-monitoring host | `192.168.1.5` |
-| `dns01` | Pi-hole DNS | `192.168.1.20` |
-| `tailscale01` | Tailscale subnet router | `192.168.1.185` |
-| `util01` | Utility / NUT monitoring host | `192.168.1.243` |
-| `docker` | Docker application host | `192.168.1.174` |
-| `nb01` | NetBox IPAM/DCIM | `10.10.10.15` |
-| `nms01` | LibreNMS network monitoring | `10.10.40.10` |
-| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
-| `fw01` | OPNsense router/firewall | `192.168.1.187` / `10.10.10.1` |
-| `dc01` | Active Directory / DNS | `10.10.20.10` |
-| `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
-| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
-| `kali01` | Security-testing system | `10.10.50.113` |
-| `target01` | Ubuntu monitored target | `10.10.60.10` |
-| `storage01` | File / backup storage | `192.168.1.208` |
-| `t-20-backup` | Proxmox shared backup storage | CIFS target |
+| System | Documented address | Role |
+|---|---|---|
+| `mgmt01` | `192.168.1.5` | Management and health checks |
+| `pve01` | `192.168.1.10` | Proxmox |
+| `pve02` | `192.168.1.11` | Proxmox |
+| `pve03` | `192.168.1.12` | Proxmox |
+| `pve04` | `192.168.1.13` | Proxmox |
+| `dns01` | `192.168.1.20` | Pi-hole |
+| `sw01` | `192.168.1.21` | Cisco switch |
+| `sw02` | `192.168.1.22` | UniFi switch |
+| `docker` | `192.168.1.174` | Containerized applications |
+| `storage01` | `192.168.1.208` | Backup storage |
+| `dc01` | `10.10.20.10` | Active Directory |
+| `nms01` | `10.10.40.10` | LibreNMS |
+| `wazuh01` | `10.10.40.20` | Wazuh |
+| `nb01` | `10.10.10.15` | NetBox |
+| `fw01` | `192.168.1.187` / `10.10.10.1` | OPNsense |
+
+The addresses reflect documented lab configuration rather than a live network inventory.
+
+The original LAN is still in use alongside the segmented VLANs.
 
 ---
 
-# 2. Daily Health Check
+## 2. Automated Health Monitoring
 
-The daily check is designed to be fast.
+### Management Host Checks
 
-## Automated Baseline from `mgmt01`
+I use `mgmt01` as an independent management and health-check system.
 
-`mgmt01` provides an independent management and monitoring path for the lab.
+The main consolidated check is:
 
-The primary consolidated health check is `homelab-status`.
+```bash
+homelab-status
+```
 
-A healthy run ends with `OVERALL STATUS: HEALTHY` and returns exit status `0`.
+A healthy result ends with:
 
-The consolidated check validates:
+```text
+OVERALL STATUS: HEALTHY
+```
 
-- network and critical-service reachability;
-- Proxmox cluster, quorum, storage, backups, resources, and expected guests;
-- Linux infrastructure health on `dns01` and `docker`;
-- Pi-hole FTL status;
-- Docker Engine and Uptime Kuma health;
-- availability of the Nginx Proxy Manager, Homarr, Grafana, Prometheus, and NetBox management services;
-- `storage01` ICMP and SMB reachability;
-- authenticated access to the `ProxmoxBackups` share and `dump` directory.
+and returns exit status `0`.
 
-Health-check logs are stored under `~/.local/state/homelab/`.
+The checks cover the Proxmox cluster, key hosts, backup storage, service availability, and supporting applications.
 
-The most recent run is available as `~/.local/state/homelab/latest.log`.
+Health-check logs are stored under:
 
-Recent results can be summarized with `homelab-history`.
+```text
+~/.local/state/homelab/
+```
 
-The same check runs hourly through the user-level `homelab-status.timer`
-systemd timer.
+The most recent log is:
 
-Service execution history can be reviewed with:
+```text
+~/.local/state/homelab/latest.log
+```
 
-    journalctl --user -u homelab-status.service --no-pager
+Recent results can be summarized with:
 
-The management SSH key remains passphrase protected. After a reboot or login,
-load it into the persistent user SSH agent with:
+```bash
+homelab-history
+```
 
-    ssh-add ~/.ssh/id_ed25519
+The consolidated check also runs hourly using a user-level systemd timer.
 
-The management workstation can be rebuilt or reconfigured with:
+To review execution history:
 
-    scripts/setup-mgmt01
+```bash
+journalctl --user -u homelab-status.service --no-pager
+```
 
-Private SSH keys and SMB credentials remain outside the repository.
+The management host uses a passphrase-protected SSH key. When necessary, I load it into the SSH agent:
 
+```bash
+ssh-add ~/.ssh/id_ed25519
+```
 
-## 2.1 Proxmox Cluster
+The management environment can be configured using the repository script:
+
+```bash
+scripts/setup-mgmt01
+```
+
+Private keys and other credentials aren't stored in the public repository.
+
+### Other Monitoring Systems
+
+Different tools provide different parts of the overall picture.
+
+| Tool | Current use |
+|---|---|
+| Uptime Kuma | Host, port, and HTTP availability checks |
+| LibreNMS | Network monitoring and SNMP telemetry |
+| Prometheus | Metrics collection |
+| Grafana | Metrics dashboards |
+| Wazuh | Security-event and endpoint monitoring |
+| NetBox | Infrastructure and IP address inventory |
+
+These tools overlap in some areas, but none is a substitute for checking whether important applications actually work.
+
+---
+
+## 3. Daily Health Review
+
+The daily review is intended to be brief.
+
+I generally begin with the automated health results and follow up on exceptions rather than manually checking every system from scratch.
+
+### Proxmox Cluster
 
 From a cluster node:
 
 ```bash
 pvecm status
-```
-
-Healthy state should include:
-
-```text
-Nodes:          4
-Expected votes: 4
-Total votes:    4
-Quorum:         3
-Quorate:        Yes
-```
-
-Then:
-
-```bash
 pvesh get /nodes
 ```
 
-Expected:
+Under the documented four-node configuration, a fully healthy cluster has four votes, a quorum requirement of three, and all nodes online.
 
-```text
-pve01   online
-pve02   online
-pve03   online
-pve04   online
-```
+If a node is missing, I investigate its connectivity and cluster state before making changes.
 
-### If Not Healthy
-
-Check:
-
-```bash
-pvecm nodes
-ip -br addr
-ip route
-```
-
-Then test reachability among cluster nodes.
-
----
-
-## 2.2 Wazuh Core Services
-
-`wazuh01` provides the lab's Wazuh manager, indexer, dashboard, and Filebeat
-services at `10.10.40.20`.
-
-The automated `mgmt01` health check validates:
-
-- host resource pressure and SSH availability;
-- `wazuh-manager`;
-- `wazuh-indexer`;
-- `wazuh-dashboard`;
-- `filebeat`;
-- required Wazuh manager processes;
-- dashboard HTTPS response;
-- local indexer HTTPS response;
-- local Wazuh API HTTPS response.
-
-Run the detailed check with:
-
-    linux-health
-
-or directly through Ansible:
-
-    ansible-playbook ansible/linux-health.yml
-
-The Wazuh dashboard normally responds with an HTTP redirect, while the
-unauthenticated local indexer and API checks may return HTTP `401`. These
-responses are treated as healthy because they confirm that the application
-endpoint is listening and enforcing authentication.
-
-For a manual service check on `wazuh01`:
-
-    sudo systemctl is-active wazuh-indexer
-    sudo systemctl is-active wazuh-manager
-    sudo systemctl is-active filebeat
-    sudo systemctl is-active wazuh-dashboard
-
-Expected result for each is `active`.
-
-The manager's internal process state can also be inspected with:
-
-    sudo /var/ossec/bin/wazuh-control status
-
-Not every Wazuh process is required in this lab. Optional components such as
-cluster, mail, agentless, integration, or syslog processes may be stopped when
-those features are not configured. Health monitoring therefore verifies the
-required manager processes rather than relying only on the overall exit status
-of `wazuh-control status`.
-
-### If a Service Is Inactive
-
-Run:
-
-```bash
-sudo systemctl status <service> --no-pager -l
-sudo journalctl -u <service> --since "30 minutes ago" --no-pager
-```
-
-Also check:
-
-```bash
-df -h /
-free -h
-```
-
----
-
-## 2.3 Wazuh Agent Coverage
-
-Verify that expected monitored endpoints still appear active.
-
-Current key endpoints include:
-
-```text
-target01
-win11-01
-dc01
-```
-
-Confirm that telemetry is recent rather than merely that the agent exists.
-
-Check for:
-
-- recent Linux events;
-- recent Windows Security events;
-- recent Sysmon events;
-- recent PowerShell telemetry where applicable.
-
-### Warning Condition
-
-A monitored endpoint that shows no recent events should be investigated even if
-its agent is technically still enrolled.
-
----
-
-## LibreNMS / NOC Monitoring
-
-`nms01` provides LibreNMS network monitoring at `10.10.40.10`.
-
-The automated `mgmt01` health checks validate:
-
-- host reachability and LibreNMS HTTP response;
-- SSH availability;
-- root-filesystem and memory pressure;
-- MariaDB;
-- nginx;
-- PHP-FPM;
-- SNMP daemon;
-- cron;
-- LibreNMS scheduler timer;
-- LibreNMS database connectivity;
-- active pollers;
-- Python poller-wrapper operation.
-
-A normal LibreNMS web check may return HTTP `302`; this is treated as healthy
-because the application redirects the initial request.
-
-The detailed Linux check can be run manually with:
-
-    linux-health
-
-or directly through Ansible:
-
-    ansible-playbook ansible/linux-health.yml
-
-LibreNMS application validation can be checked on `nms01` with:
-
-    cd /opt/librenms
-    sudo -u librenms ./validate.php
-
-The normal daily LibreNMS maintenance job is scheduled through
-`/etc/cron.d/librenms`. A host that is powered off at the scheduled time will
-miss that cron execution; traditional cron does not automatically replay the
-missed job after boot.
-
-## 2.4 Pi-hole DNS
+### DNS
 
 On `dns01`:
 
@@ -287,393 +146,218 @@ On `dns01`:
 pihole status
 ```
 
-Expected:
-
-- FTL operational;
-- DNS service available;
-- blocking enabled.
-
 From another host:
 
 ```bash
-ping -c 3 192.168.1.20
+dig @192.168.1.20 example.com
 ```
 
-Then test DNS:
+The second test matters because it checks that a client can receive an actual DNS response.
+
+### Wazuh
+
+On `wazuh01`, I can check:
 
 ```bash
-dig example.com
+sudo systemctl is-active wazuh-indexer
+sudo systemctl is-active wazuh-manager
+sudo systemctl is-active filebeat
+sudo systemctl is-active wazuh-dashboard
 ```
 
-or:
+The management-host health checks also inspect required Wazuh processes and application endpoints.
+
+An HTTP redirect from the dashboard, or an HTTP 401 from an unauthenticated API request, can be a healthy response when the service is listening and enforcing its expected access policy.
+
+I also check whether monitored endpoints are reporting recent telemetry.
+
+### LibreNMS
+
+The existing health checks cover the LibreNMS web interface and important services such as MariaDB, nginx, PHP-FPM, SNMP, and pollers.
+
+For a more detailed application check on `nms01`:
 
 ```bash
-nslookup example.com
+cd /opt/librenms
+sudo -u librenms ./validate.php
 ```
 
-### mgmt01 Resolver Policy
+### Backup Storage
 
-`mgmt01` is intentionally configured to use `dns01` at `192.168.1.20`
-as its system resolver.
-
-IPv6 remains enabled. The Netplan override:
-
-    /etc/netplan/90-homelab-dns.yaml
-
-prevents DNS servers and search domains learned through both DHCPv6 and IPv6
-router advertisements from overriding or bypassing Pi-hole.
-
-Verify the active resolver with:
-
-    resolvectl dns enx00e04c683e33
-    resolvectl domain enx00e04c683e33
-
-Expected DNS server:
-
-    192.168.1.20
-
-No AT&T-provided IPv6 DNS server or `attlocal.net` search domain should appear.
-
-The automated `homelab-health` check deliberately performs two separate DNS
-tests:
-
-- `dns01 DNS/53` confirms that Pi-hole itself answers DNS queries;
-- `mgmt01 System DNS` confirms that the management host can resolve names
-  through its configured system resolver.
-
-### Healthy State
-
-```text
-dns01 reachable
-DNS resolves public names
-Pi-hole service operational
-```
-
----
-
-## 2.5 Internet / Gateway Check
-
-From `mgmt01` or another known-good Linux host:
-
-```bash
-ping -c 3 192.168.1.254
-```
-
-Then:
-
-```bash
-ping -c 3 google.com
-```
-
-Interpretation:
-
-```text
-gateway fails
-→ local network / gateway issue
-
-gateway works, hostname fails
-→ likely DNS issue
-
-gateway works, DNS works
-→ basic network path healthy
-```
-
----
-
-## 2.6 Critical Storage Check
-
-On a Proxmox node:
+From Proxmox:
 
 ```bash
 pvesm status
+pvesm list t-20-backup
 ```
 
-Expected active storage:
+I want to know whether the backup destination is available, not merely whether the Windows storage server is powered on.
 
-```text
-local
-local-lvm
-t-20-backup
-```
+### Monitoring Exceptions
 
-Look for:
+Uptime Kuma provides a quick view of whether monitored services are reachable.
 
-- inactive storage;
-- unexpectedly high utilization;
-- backup storage unavailable.
-
-For `t-20-backup`, Proxmox reports the Drobo's 64 TB logical volume rather than
-its physical capacity. Check Drobo Dashboard for real usable space and health.
+For an outage, I check the affected service and its dependencies rather than assuming the availability monitor identifies the root cause.
 
 ---
 
-# 3. Weekly Operations Checklist
+## 4. Ansible Health Checks
 
-The weekly check goes deeper than the daily availability check.
+I also use Ansible for Linux infrastructure checks.
 
-## 3.1 Proxmox Resource Review
+The documented playbook is:
 
-Run:
+```bash
+ansible-playbook ansible/linux-health.yml
+```
+
+The associated `linux-health` command provides another way to run the checks.
+
+These cover host resources and selected services, including Wazuh and LibreNMS.
+
+The Ansible checks help standardize what I inspect across systems and make the results easier to compare.
+
+---
+
+## 5. Weekly Proxmox Review
+
+Once a week, I take a closer look at the cluster.
+
+### Guest Inventory and Resources
 
 ```bash
 pvesh get /cluster/resources --type vm
 ```
 
-Review:
+I review which guests are running, which are intentionally stopped, and whether any node is carrying more workload than expected.
 
-- running guests;
-- stopped guests that should be running;
-- memory allocation;
-- placement across nodes.
-
-On each host:
+On individual nodes:
 
 ```bash
 free -h
 df -h
 ```
 
-Review:
-
-- RAM pressure;
-- swap use;
-- filesystem capacity.
-
----
-
-## 3.2 Proxmox Storage Capacity
-
-Run:
+### Storage Capacity
 
 ```bash
 pvesm status
 ```
 
-Check:
+I review `local`, `local-lvm`, and `t-20-backup`.
 
-- `local`;
-- `local-lvm`;
-- `t-20-backup`.
+As a working guideline, I investigate filesystems approaching 80% utilization and give higher priority to those approaching 90%.
 
-Record any storage approaching an operational threshold.
+Those are operational review thresholds, not universal product limits.
 
-A useful warning threshold for manual review is:
+### LVM-Thin Pools
 
-```text
-80% used
-```
-
-A critical threshold for immediate attention is:
-
-```text
-90% used
-```
-
-These are operational review thresholds, not hard product limits.
-
----
-
-## 3.3 Backup Visibility
-
-Verify Proxmox can list the backup destination contents:
-
-```bash
-pvesm list t-20-backup
-```
-
-Questions:
-
-- Are recent backups visible?
-- Are expected guests represented?
-- Is the target reachable?
-- Has available capacity changed unexpectedly?
-
-Do not assume a scheduled backup succeeded because the schedule exists.
-
-If `t-20-backup` becomes unavailable after a reboot or power interruption,
-check the storage-server dependency chain before modifying the Proxmox storage
-definition:
-
-```text
-Drobo / attached storage
-        ↓
-Windows volume
-        ↓
-SMB share and LanmanServer
-        ↓
-Windows network profile / firewall
-        ↓
-TCP 445 reachability
-        ↓
-Proxmox CIFS storage
-```
-
-Useful checks on `storage01`:
-
-```powershell
-Get-Service LanmanServer
-Get-SmbShare
-Get-NetConnectionProfile
-```
-
-The trusted home-LAN Ethernet connection should normally be classified as
-`Private`.
-
-From Proxmox:
-
-```bash
-nc -nvz -w 3 192.168.1.208 445
-pvesm status
-pvesm list t-20-backup
-```
-
-Current expected coverage is one recent archive for each guest ID:
-
-```text
-100 101 105 200 201 210 300 320 400 500
-```
-
-The daily jobs are intentionally staggered:
-
-| Node | Schedule |
-|---|---:|
-| `pve01` | `02:00` |
-| `pve02` | `04:00` |
-| `pve03` | `05:00` |
-| `pve04` | `06:00` |
-
-Storage-level retention should remain:
-
-```text
-keep-last=7,keep-weekly=4,keep-monthly=3
-```
-
-Verify the current job and storage configuration with:
-
-```bash
-pvesh get /cluster/backup --output-format yaml
-pvesh get /storage/t-20-backup --output-format yaml
-```
-
-## 3.3.1 Proxmox Thin-Pool Review
-
-On each Proxmox node, periodically inspect LVM-thin data and metadata usage:
+Proxmox local storage also requires attention to thin-pool data and metadata consumption.
 
 ```bash
 lvs -a --units g \
-    -o vg_name,lv_name,lv_size,data_percent,metadata_percent,seg_monitor
-
-vgs --units g \
-    -o vg_name,vg_size,vg_free
+  -o vg_name,lv_name,lv_size,data_percent,metadata_percent,seg_monitor
 ```
 
-On `pve01`, LVM monitoring is enabled and the current auto-extension guard is:
+```bash
+vgs --units g \
+  -o vg_name,vg_size,vg_free
+```
+
+The documented `pve01` thin-pool auto-extension settings are:
 
 ```text
 thin_pool_autoextend_threshold=80
 thin_pool_autoextend_percent=4
 ```
 
-The small percentage reflects the limited free space remaining in the volume
-group. It provides a guard, not unlimited growth. Continue monitoring actual
-thin-pool consumption and plan added capacity before the reserve is exhausted.
+These settings provide some protection against running out of capacity, but they aren't a replacement for monitoring actual storage consumption.
 
 ---
 
-## 3.4 Backup Spot Check
+## 6. Backup Review
 
-Select at least one backup periodically and confirm that Proxmox can read its
-configuration metadata.
+The Proxmox backup jobs use shared storage named:
 
-Example workflow:
+`t-20-backup`
+
+The documented backup schedule is:
+
+| Node | Daily time |
+|---|---|
+| `pve01` | 02:00 |
+| `pve02` | 04:00 |
+| `pve03` | 05:00 |
+| `pve04` | 06:00 |
+
+The jobs are staggered to avoid placing unnecessary simultaneous load on the shared Windows/USB-backed storage.
+
+The recorded retention policy is:
 
 ```text
-List backup
-   ↓
-Select recent guest
-   ↓
-Inspect configuration
-   ↓
-Confirm archive is readable
+keep-last=7,keep-weekly=4,keep-monthly=3
 ```
 
-Where appropriate, use:
+I can review the configured jobs and storage settings with:
 
 ```bash
-pvesm extractconfig ...
+pvesh get /cluster/backup --output-format yaml
+pvesh get /storage/t-20-backup --output-format yaml
 ```
 
-Do not present reconstructed commands as original execution history.
+### What I Review
 
----
+I check that recent backups exist for the guests that are currently expected to be protected.
 
-## 3.5 Linux Service Review
+I also look for failed jobs, missing archives, unexpected storage growth, and changes in retention.
 
-On key Linux systems, review failed systemd units:
-
-```bash
-systemctl --failed
-```
-
-For important services:
-
-```bash
-systemctl is-active <service>
-```
-
-Investigate anything unexpectedly failed.
-
----
-
-## 3.6 Wazuh Alert Review
-
-Review recent alerts for:
-
-- repeated authentication failures;
-- unexpected account changes;
-- file integrity changes;
-- suspicious process activity;
-- Windows Security events;
-- PowerShell activity;
-- Auditd events.
-
-The goal is not simply to clear alerts.
-
-Ask:
+The original checklist recorded guest IDs:
 
 ```text
-Is this expected?
-Is it repeated?
-Is it new?
-Does it require follow-up?
+100 101 105 200 201 210 300 320 400 500
 ```
+
+That is a historical coverage list, not a guarantee that every listed VMID remains active or should still have a current backup.
+
+### Storage Capacity
+
+The backup storage uses an attached Drobo volume.
+
+Proxmox may report the volume's large logical capacity rather than the actual usable physical capacity.
+
+For capacity planning, I also check the storage hardware's reported health and real available capacity.
 
 ---
 
-## 3.7 Windows Endpoint Telemetry
+## 7. Security Monitoring Review
 
-On `win11-01`, confirm:
+### Wazuh Alerts
 
-- Wazuh agent is running;
-- Sysmon telemetry is present;
-- Windows Security events are arriving;
-- PowerShell logging is still visible.
+I review security events involving:
 
-Example PowerShell service check:
+- Repeated authentication failures
+- Unexpected account changes
+- File Integrity Monitoring
+- Linux privileged commands
+- Windows process execution
+- PowerShell events
+- Active Directory account administration
 
-```powershell
-Get-Service WazuhSvc
-```
+The question isn't simply whether Wazuh generated alerts.
 
-Review recent event activity where needed.
+I want to know whether the activity was expected and whether it needs investigation.
 
----
+### Endpoint Coverage
 
-## 3.8 Active Directory Health
+Important monitored endpoints include:
 
-On `dc01`, verify the domain is responding.
+`target01`, `win11-01`, and `dc01`.
 
-Useful checks:
+I check that events are recent, not just that the agents are enrolled.
+
+### Windows and Active Directory
+
+On `dc01`:
 
 ```powershell
 Get-ADDomain
@@ -681,660 +365,196 @@ Get-ADForest
 Get-ADDomainController
 ```
 
-From `win11-01`:
+From the domain-joined Windows endpoint:
 
 ```powershell
 Test-ComputerSecureChannel -Verbose
 ```
 
-Healthy result:
-
-```text
-True
-```
-
-Also verify DNS resolution for:
-
-```text
-dc01.corp.home.arpa
-```
+I also verify Active Directory DNS when domain discovery or authentication appears abnormal.
 
 ---
 
-## 3.7 Cisco Switch Staging Check
+## 8. Network Monitoring Review
 
-Until `sw01` becomes the active homelab switching path, perform only the checks
-that match its actual staged state:
+With the Cisco and UniFi switches deployed, the regular network review includes switch availability, trunk status, interface errors, and VLAN connectivity.
 
-- confirm `192.168.1.21` is still the intended unique management address;
-- confirm the stored baseline configuration backup remains available;
-- record firmware if it changes;
-- use `show vlan` to confirm that no unplanned segmentation was introduced;
-- keep the physical port/cable map current as devices are connected.
+I use LibreNMS and direct switch inspection as appropriate.
 
-After the physical migration, move link-state, interface-counter, VLAN, trunk,
-SNMP, syslog, and SPAN checks into the regular active operations schedule.
+For OPNsense, I check interface state, expected routed connectivity, and firewall logs when something fails.
+
+I also want to identify monitoring gaps created by migrating systems from the original flat network to VLANs.
+
+A service address change may require updates to SNMP monitoring, dashboards, alerts, DNS, and remote-access rules.
+
+The default-LAN renumbering remains planned, not completed.
 
 ---
 
-# 4. Monthly Operations Checklist
+## 9. Monthly Maintenance
 
-The monthly checklist focuses on maintenance, recovery readiness, and trend
-review.
+The monthly review focuses on updates, recovery readiness, account management, and documentation.
 
-## 4.1 Operating System Updates
+### Linux Updates
 
-Review pending updates on Linux systems.
-
-Example:
+On an Ubuntu or Debian system:
 
 ```bash
 sudo apt update
 apt list --upgradable
 ```
 
-Apply updates according to the role and maintenance risk of the system.
+I review the impact of updates before applying them to critical systems.
 
-For critical infrastructure such as DNS or Wazuh, confirm backup/recovery options
-before major updates.
+### Proxmox Maintenance
 
----
+For cluster updates, I prefer working through one node at a time.
 
-## 4.2 Proxmox Update Review
+I verify backups and cluster health before beginning, then validate each node after its maintenance.
 
-Review available Proxmox updates and release notes before applying significant
-changes.
+### Active Directory Accounts
 
-Operational approach:
-
-```text
-Verify backups
-   ↓
-Check cluster healthy
-   ↓
-Update one node
-   ↓
-Validate node
-   ↓
-Proceed to next node
-```
-
-Avoid unnecessary simultaneous maintenance on all cluster nodes.
-
----
-
-## 4.3 Backup Restore Test
-
-At least periodically, perform a controlled restore test.
-
-A useful sequence is:
-
-```text
-Select backup
-   ↓
-Restore to temporary guest ID
-   ↓
-Start guest
-   ↓
-Validate networking
-   ↓
-Validate service
-   ↓
-Document result
-   ↓
-Remove temporary test if no longer needed
-```
-
-Backup creation without restore testing is incomplete disaster-recovery
-validation.
-
-A complete example of this procedure is documented in
-[`21-proxmox-backup-restore-validation.md`](21-proxmox-backup-restore-validation.md).
-The August 26, 2026 exercise restored VM 210 to temporary VMID 910 with an
-isolated NIC, verified the guest and Uptime Kuma service, and then removed the
-temporary restore.
-
----
-
-## 4.4 Asset Inventory Review
-
-Review:
-
-```text
-docs/02-asset-inventory.md
-```
-
-Confirm:
-
-- hostnames still accurate;
-- IP addresses still accurate;
-- DHCP-observed systems documented correctly;
-- retired assets removed from current state;
-- new assets added;
-- planned systems are not incorrectly marked operational.
-
----
-
-## 4.5 Documentation Drift Review
-
-Check whether implementation documents still match reality.
-
-Examples:
-
-- a service marked planned is now deployed;
-- an IP changed;
-- a hostname changed;
-- a VM moved;
-- a backup target changed;
-- monitoring coverage expanded;
-- an old troubleshooting note is now misleading.
-
-Documentation should be treated as operational state, not a historical artifact
-that is never revisited.
-
----
-
-## 4.6 Password / Credential Hygiene
-
-Review administrative credentials according to actual service requirements.
-
-Do not store credentials in the public repository.
-
-Check for:
-
-- unused administrative accounts;
-- stale test accounts;
-- default credentials;
-- unnecessary local accounts;
-- credentials embedded in scripts or configuration examples.
-
----
-
-## 4.7 Active Directory Account Review
-
-Review test and administrative accounts.
-
-Example:
+On `dc01`:
 
 ```powershell
 Get-ADUser -Filter * |
 Select-Object Name, SamAccountName, Enabled
 ```
 
-Questions:
+I review whether test accounts, disabled accounts, and administrative memberships are still appropriate.
 
-- Does each account still have a purpose?
-- Are temporary lab accounts still required?
-- Are disabled accounts intentionally retained?
-- Are privileged memberships appropriate?
+### Documentation and Inventory
 
----
+I compare the asset inventory and configuration documents against the systems actually in use.
 
-# 5. Quarterly Recovery and Failure Testing
-
-A less frequent test can intentionally validate failure handling.
-
-Examples:
-
-## DNS Independence Test
-
-Verify DNS remains available during controlled Proxmox maintenance.
-
-Expected architectural result:
-
-```text
-Proxmox host maintenance
-        |
-        X
-        |
-dns01 remains available
-```
-
-## Single Proxmox Node Failure Test
-
-During a controlled maintenance window:
-
-- shut down or isolate one cluster node;
-- verify surviving nodes retain quorum;
-- verify management remains available;
-- document affected workloads.
-
-This tests cluster control-plane behavior, not automatic HA.
-
-## Backup Restore Exercise
-
-Restore a selected VM/LXC and validate real service functionality.
-
-## Wazuh Telemetry Test
-
-Generate a known benign test event and verify the full collection path.
+Particular attention goes to IP addresses, VM placement, planned versus completed work, and changes to service dependencies.
 
 ---
 
-# 6. Security Monitoring Health Checks
+## 10. Restore Testing
 
-Monitoring can fail silently.
+A backup job completing successfully is useful, but it doesn't establish that a system can be restored.
 
-Routine validation should include generating known test activity.
+I periodically want to test a restore and verify the recovered application.
 
-Examples:
+In August 2026, I restored the Docker VM from VMID 210 to a temporary VMID 910.
 
-## Linux
+The restored VM used an isolated network interface.
 
-Generate a benign authentication or file-integrity test in the lab.
+I confirmed that the guest booted, Docker worked, and Uptime Kuma was operational before removing the temporary VM.
 
-Confirm:
+That exercise is documented in [Proxmox Backup and Restore Validation](21-proxmox-backup-restore-validation.md).
 
-```text
-activity
-  ↓
-endpoint log
-  ↓
-Wazuh agent
-  ↓
-Wazuh manager
-  ↓
-alert/search result
-```
-
-## Windows
-
-Generate a benign PowerShell action:
-
-```powershell
-Get-Date
-```
-
-Confirm recent process / PowerShell telemetry appears as expected.
-
-## Active Directory
-
-When appropriate, use a controlled test account to verify Windows Security and
-Wazuh identity-event collection.
-
-Do not repeatedly create noisy events merely to populate the dashboard.
+Future exercises should continue testing application functionality and documenting the results rather than only confirming that a restore command succeeded.
 
 ---
 
-# 7. Capacity Threshold Checklist
+## 11. UPS and Power Recovery
 
-## Filesystems
+The lab includes several UPS units and uses NUT monitoring through `util01`.
 
-Review when:
+Power events affect more than the hypervisors. They can also affect storage, switching, DNS, and remote administration.
 
-```text
->= 80% used → investigate trend
->= 90% used → prioritize corrective action
-```
+I want to maintain an orderly shutdown sequence and a predictable startup procedure.
 
-## Proxmox Storage
+Regular review includes UPS communications, battery and load information, shutdown dependencies, and whether critical systems come back correctly after a power interruption.
 
-Watch:
-
-- `local`;
-- `local-lvm`;
-- backup storage.
-
-## Memory
-
-Investigate:
-
-- sustained low available memory;
-- heavy swap use;
-- guest allocation growth.
-
-## Backup Storage
-
-Track:
-
-- available capacity;
-- backup growth;
-- retention.
-
-The Wazuh deployment demonstrated why capacity checks matter: a virtual disk can
-appear adequately sized at the hypervisor while the guest filesystem has not
-actually been allocated that capacity.
+The procedures are documented in [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md).
 
 ---
 
-# 8. Change Readiness Checklist
+## 12. Before and After Changes
 
-Before a significant infrastructure change:
+For changes affecting shared services or network infrastructure, I follow a short checklist.
 
-- [ ] Identify affected systems.
-- [ ] Confirm current health.
-- [ ] Confirm current IP/hostname.
-- [ ] Confirm backups exist where applicable.
-- [ ] Confirm rollback path.
-- [ ] Record current configuration.
-- [ ] Define expected result.
-- [ ] Make one controlled change.
-- [ ] Validate service afterward.
-- [ ] Update documentation.
-- [ ] Commit relevant repository changes.
-- [ ] For physical/network changes, photograph or record the pre-change cable/port state.
-- [ ] Verify both ends of affected Ethernet cables are labeled before disconnecting them.
+Before the change:
 
----
+- Record the current state and affected systems.
+- Confirm relevant backups or configuration exports.
+- Establish the intended result.
+- Identify a rollback path.
+- Preserve a management connection that doesn't depend on the change succeeding.
 
-# 9. Incident Follow-Up Checklist
+After the change:
 
-After an outage or service failure:
+- Verify basic connectivity.
+- Test the actual service.
+- Check monitoring and logging.
+- Confirm dependent systems still function.
+- Update the inventory and documentation.
+- Record any unresolved issues.
 
-- [ ] Was the root cause identified?
-- [ ] Was service restored?
-- [ ] Was restoration independently verified?
-- [ ] Were temporary workarounds removed?
-- [ ] Is monitoring functioning?
-- [ ] Does the issue need a preventive action?
-- [ ] Does the asset inventory need updating?
-- [ ] Does a runbook need updating?
-- [ ] Was evidence preserved?
-- [ ] Was the incident/ticket closed with useful notes?
+This is particularly important for firewall, VLAN, DNS, and storage changes because a successful configuration change on one system can still interrupt something that depends on it.
 
 ---
 
-# 10. Daily Checklist Template
+## 13. Daily and Weekly Review Template
 
 ```text
 Date:
 
-PROXMOX
-[ ] Cluster quorate
-[ ] pve01 online
-[ ] pve02 online
-[ ] pve03 online
-[ ] pve04 online
-[ ] Storage active
+DAILY
+[ ] Review automated health results
+[ ] Check Proxmox cluster status
+[ ] Confirm DNS resolution
+[ ] Review Uptime Kuma exceptions
+[ ] Confirm critical services
+[ ] Confirm backup storage availability
+[ ] Check Wazuh/LibreNMS health
+[ ] Review significant monitoring alerts
 
-DNS
-[ ] dns01 reachable
-[ ] Pi-hole active
-[ ] DNS resolution successful
+WEEKLY
+[ ] Review Proxmox guest placement
+[ ] Review node resources
+[ ] Review storage and thin pools
+[ ] Confirm recent backups
+[ ] Review Wazuh agent coverage
+[ ] Review network-monitoring exceptions
+[ ] Check Windows/AD health
+[ ] Review unresolved incidents
 
-WAZUH
-[ ] Indexer active
-[ ] Manager active
-[ ] Filebeat active
-[ ] Dashboard active
-[ ] Key agents reporting
+Exceptions:
 
-WINDOWS / AD
-[ ] dc01 reachable
-[ ] win11-01 telemetry recent
-[ ] AD/DNS normal
-
-CONNECTIVITY
-[ ] Gateway reachable
-[ ] Internet name resolution works
-
-EXCEPTIONS / NOTES:
-```
-
----
-
-# 11. Weekly Checklist Template
-
-```text
-Week of:
-
-PROXMOX
-[ ] Review cluster resources
-[ ] Review node RAM
-[ ] Review filesystem usage
-[ ] Review local-lvm capacity
-[ ] Review shared storage capacity
-
-BACKUPS
-[ ] Recent backups visible
-[ ] Backup target accessible
-[ ] Spot-check backup metadata
-[ ] Confirm all expected guest IDs are represented
-[ ] Confirm Drobo health and physical capacity in Drobo Dashboard
-
-WAZUH
-[ ] Review recent alerts
-[ ] Confirm Linux telemetry
-[ ] Confirm Windows telemetry
-[ ] Confirm AD security telemetry
-
-DNS
-[ ] Pi-hole healthy
-[ ] Resolution normal
-
-WINDOWS / AD
-[ ] Domain responsive
-[ ] Secure channel valid
-[ ] No unexpected account changes
-
-LINUX SERVICES
-[ ] Review failed units
-
-FOLLOW-UP:
-```
-
----
-
-# 12. Monthly Checklist Template
-
-```text
-Month:
-
-MAINTENANCE
-[ ] Review Linux updates
-[ ] Review Proxmox updates
-[ ] Schedule maintenance if needed
-
-RECOVERY
-[ ] Perform/confirm restore test
-[ ] Verify backup capacity
-[ ] Review rollback readiness
-
-DOCUMENTATION
-[ ] Review asset inventory
-[ ] Review current architecture
-[ ] Update changed IPs/roles/status
-[ ] Remove stale planned language
-
-IDENTITY
-[ ] Review AD accounts
-[ ] Review test accounts
-[ ] Review administrative accounts
-
-SECURITY
-[ ] Confirm telemetry test path
-[ ] Review credential hygiene
-
-CAPACITY
-[ ] Review disk trends
-[ ] Review memory trends
-[ ] Review backup growth
-[ ] Review LVM-thin data and metadata percentages
-
-NOTES / ACTION ITEMS:
-```
-
----
-
-# 13. Operations Log Template
-
-For recurring checks:
-
-```text
-Date:
-Operator:
-
-Check Performed:
-System:
-Expected Result:
-Actual Result:
-
-Status:
-[ ] Healthy
-[ ] Warning
-[ ] Failed
-[ ] Follow-up required
-
-Action Taken:
+Actions taken:
 
 Verification:
 
-Ticket / Documentation Reference:
+Follow-up:
 ```
 
----
-
-# 14. Planned Future Additions
-
-When the following systems become operational, add them to the active
-operations checklist:
-
-## Cisco Managed Switch — After Physical Deployment
-
-Baseline staging is complete. After `sw01` begins carrying homelab traffic, add:
-
-- switch reachability;
-- interfaces up/down;
-- error counters;
-- VLAN membership;
-- trunk state;
-- configuration-backup freshness;
-- SNMPv3;
-- syslog;
-- SPAN configuration where used.
-
-Do not mark VLAN, trunk, SNMP, syslog, or SPAN checks complete before those
-features are actually configured and validated.
-
-## Zabbix
-
-Future checks:
-
-- Zabbix server health;
-- agent availability;
-- trigger state;
-- unreachable hosts;
-- alert queue;
-- monitored CPU/memory/disk;
-- latency and packet loss.
-
-## OPNsense
-
-Future checks:
-
-- interface state;
-- routing;
-- DHCP;
-- DNS forwarding;
-- firewall logs;
-- blocked traffic;
-- gateway state;
-- inter-VLAN connectivity.
-
-## Suricata
-
-Future checks:
-
-- engine state;
-- interface capture;
-- rule updates;
-- alert volume;
-- false-positive review;
-- Wazuh/SIEM integration.
-
-These should not be marked complete until deployed and validated.
+The template is a reference for manual reviews. It doesn't imply that every item has been automated or completed on every date.
 
 ---
 
-# 15. Skills Demonstrated
+## 14. Planned Additions
 
-This operational checklist demonstrates understanding of:
+Some future work will require additional monitoring coverage.
 
-## NOC Operations
+That includes expanding SNMPv3 usage, reviewing OPNsense firewall rules, testing more recovery scenarios, and adding checks as new services are deployed.
 
-- Routine health checks
-- Service availability
-- Capacity review
-- Infrastructure monitoring
-- Escalation readiness
-- Maintenance planning
-- Operational documentation
+Zabbix is still a possible future experiment, not an operational dependency.
 
-## SOC Operations
-
-- Telemetry health
-- Security alert review
-- Endpoint monitoring
-- Detection-path validation
-- Identity-monitoring checks
-
-## Systems Administration
-
-- Linux services
-- Proxmox clustering
-- Storage
-- DNS
-- Active Directory
-- Windows endpoints
-- Backup/recovery
-
-## Operational Discipline
-
-- Preventive checks
-- Change readiness
-- Failure validation
-- Rollback planning
-- Restore testing
-- Documentation maintenance
-- Post-incident follow-up
+If I deploy it, I'll first validate a small set of hosts and alerts before incorporating it into regular health checks.
 
 ---
 
-# 16. Related Documentation
+## Result
 
-| Area | Document |
-|---|---|
-| Backup / disaster recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| Pi-hole DNS | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
-| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
-| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
-| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
-| Wazuh SIEM | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Skills matrix | [`11-soc-noc-skills-matrix.md`](11-soc-noc-skills-matrix.md) |
-| SOC triage | [`12-soc-alert-triage-playbook.md`](12-soc-alert-triage-playbook.md) |
-| NOC troubleshooting | [`13-noc-troubleshooting-runbook.md`](13-noc-troubleshooting-runbook.md) |
-| Ticket examples | [`14-soc-noc-ticket-examples.md`](14-soc-noc-ticket-examples.md) |
+The homelab now has several overlapping monitoring systems, automated health checks, and documented maintenance procedures.
 
----
+I use them to detect failures, check resource capacity, verify backups, and identify services that stop behaving as expected.
 
-# 17. Summary
+The operational work is ongoing. I expect the checklist to change as I add systems, migrate network services, and improve automation.
 
-The lab is treated as an environment that must be operated, not merely built.
+The main objective is to make it easier to identify problems early, understand their impact, and verify that the lab is working after maintenance or recovery.
 
-The recurring operational cycle is:
+## Related Documentation
 
-```text
-Check
-  ↓
-Measure
-  ↓
-Detect exception
-  ↓
-Investigate
-  ↓
-Correct
-  ↓
-Verify
-  ↓
-Document
-  ↓
-Repeat
-```
-
-That cycle supports practical experience relevant to NOC, SOC, systems
-administration, infrastructure support, and junior operations roles.
+- [Asset Inventory](02-asset-inventory.md)
+- [Proxmox Cluster](03-proxmox-cluster-build.md)
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [Wazuh SIEM](06-wazuh-siem.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
+- [Backup and Restore Validation](21-proxmox-backup-restore-validation.md)
