@@ -1,357 +1,201 @@
 # SOC/NOC Skills Matrix
 
-## Purpose
+## Overview
 
-This document maps job-relevant SOC, NOC, systems, networking, and security
-skills to work that has actually been implemented and validated in this
-homelab.
+This page connects the technical work I've done in my homelab with skills relevant to SOC, NOC, systems administration, and infrastructure-support positions.
 
-It is intended to answer a practical hiring-manager question:
+Rather than list technologies I've experimented with, I want to show what I've actually configured, tested, troubleshot, and documented.
 
-> What can I point to in this repository that demonstrates the skill?
+The links point to the work itself.
 
-The matrix distinguishes between:
-
-- **Demonstrated** — implemented and validated in the current lab
-- **Supporting** — used as part of a demonstrated workflow
-- **In progress / planned** — part of the target architecture but not yet claimed as completed experience
-
-The goal is evidence-backed skills, not a list of product names.
+I distinguish between completed work, systems I'm still expanding, and projects I haven't started.
 
 ---
 
-# 1. Core Skills Matrix
+## 1. Virtualization and Systems Administration
 
-| Skill / Competency | Status | Hands-on Implementation | Validation / Evidence | Repository Documentation |
-|---|---|---|---|---|
-| Proxmox VE administration | **Demonstrated** | Built and administer a four-node Proxmox VE cluster; manage VMs, LXC containers, storage, networking, and resources | Four nodes online; cluster membership, workloads, and resources validated | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
-| Multi-node virtualization | **Demonstrated** | `pve01`, `pve02`, `pve03`, and `pve04` operate as cluster `homelab` | `pvecm status`, `pvecm nodes`, `pvesh get /nodes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
-| Cluster quorum | **Demonstrated** | Four voting Proxmox nodes using Corosync/knet | 4 votes, quorum 3, `Quorate: Yes` | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
-| VM / LXC administration | **Demonstrated** | Inventory, backup, restore, start, inspect, and manage QEMU VMs and LXC containers | `qm`, `pct`, QEMU guest-agent and restore workflows | [`01-proxmox-backup.md`](01-proxmox-backup.md), [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Backup and disaster recovery | **Demonstrated** | Created Proxmox guest backups and host-configuration backup; inspected and restored workloads | Backup existence, configuration extraction, LXC restoration and post-restore checks | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Shared storage / CIFS | **Demonstrated** | Integrated and recovered `t-20-backup` as remote Proxmox backup storage | `pvesm status`, `pvesm list`, stale-mount recovery, backup access and restore workflow | [`01-proxmox-backup.md`](01-proxmox-backup.md), [`02-asset-inventory.md`](02-asset-inventory.md), [`17-storage-backup-resilience.md`](17-storage-backup-resilience.md) |
-| Linux administration | **Demonstrated** | Ubuntu, Raspberry Pi OS, Proxmox/Debian administration; services, packages, filesystems, networking, logging | Repeated CLI-based build, validation, troubleshooting, and recovery work | Multiple documents |
-| Linux networking | **Demonstrated** | Interface inspection, IP addressing, routing, bridges, DNS client configuration | `ip -br addr`, `ip route`, `/etc/network/interfaces`, resolver checks | [`01-proxmox-backup.md`](01-proxmox-backup.md), [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| DNS administration | **Demonstrated** | Migrated Pi-hole DNS to dedicated Raspberry Pi; configured and validated AD-integrated DNS | Port 53/service checks, client resolution, domain discovery, DNS locator records | [`02-pihole-migration.md`](02-pihole-migration.md), [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Infrastructure dependency reduction | **Demonstrated** | Removed household DNS dependency from the Proxmox virtualization layer | Pi-hole moved from LXC to dedicated `dns01` at `192.168.1.20` | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Asset inventory / configuration management | **Demonstrated** | Maintain current inventory of physical, virtual, service, storage, IP, and monitoring assets | Operational vs DHCP vs planned vs historical state documented | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| Technical documentation | **Demonstrated** | Document commands, expected results, actual results, failures, diagnosis, fixes, and validation | Public repository structure and implementation records | Entire repository |
-| Change / recovery discipline | **Demonstrated** | Baseline before changes, verify backup destination, validate recovery before destructive rebuild | Backup and restore criteria documented and exercised | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
+| Skill | Work completed | Evidence |
+|---|---|---|
+| Proxmox VE | Built and administer a four-node cluster with VMs, LXC containers, and centralized management | [Cluster build](03-proxmox-cluster-build.md) |
+| Cluster administration | Validated membership, quorum, node health, and rolling updates | [Node expansion](16-proxmox-node-expansion.md) |
+| VM administration | Created, configured, migrated, backed up, and restored virtual machines | [Proxmox build](03-proxmox-cluster-build.md) |
+| Linux administration | Configured Ubuntu, Debian, Proxmox, and Raspberry Pi OS systems | [Wazuh deployment](06-wazuh-siem.md) |
+| Windows Server | Deployed Windows Server 2025 and configured Active Directory | [Active Directory](10-active-directory-lab.md) |
+| Backup and recovery | Configured shared backup storage and performed restore validation | [Restore validation](21-proxmox-backup-restore-validation.md) |
+| Storage administration | Worked with CIFS mounts, LVM, Proxmox storage, and backup recovery | [Storage resilience](17-storage-backup-resilience.md) |
+| Service troubleshooting | Used systemd, journalctl, logs, and resource checks to diagnose failures | [Wazuh troubleshooting](06-wazuh-siem.md) |
 
----
+One of the more useful examples is the Wazuh installation failure. I traced the problem from an OpenSearch error back to an Ubuntu root logical volume that wasn't using the available virtual disk capacity.
 
-# 2. SOC / Security Operations Skills
-
-| Skill / Competency | Status | Hands-on Implementation | Validation / Evidence | Repository Documentation |
-|---|---|---|---|---|
-| SIEM deployment | **Demonstrated** | Deployed Wazuh all-in-one SIEM on `wazuh01` | Indexer, manager, Filebeat, dashboard all validated active | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| SIEM endpoint enrollment | **Demonstrated** | Enrolled Linux and Windows systems into Wazuh | Active agent validation and telemetry observed in dashboard | [`06-wazuh-siem.md`](06-wazuh-siem.md), [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Centralized log analysis | **Demonstrated** | Collected endpoint, authentication, application, Auditd, file-integrity, and Windows security telemetry | Controlled events produced searchable Wazuh alerts | [`06-wazuh-siem.md`](06-wazuh-siem.md), [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Alert triage and validation | **Demonstrated** | Compared Wazuh detections with source endpoint/application logs | SSH, Apache, FIM, Auditd, account and Windows events validated against source activity | [`09-attack-detection-labs.md`](09-attack-detection-labs.md), [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Threat hunting | **Demonstrated** | Used Wazuh event data to locate and inspect controlled security activity | Rule IDs, event details, agents, timestamps, users and source logs correlated | [`06-wazuh-siem.md`](06-wazuh-siem.md), [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| MITRE ATT&CK mapping | **Demonstrated** | Mapped controlled detections to ATT&CK techniques | Examples include T1110, T1565.001, T1190, T1136, T1531, T1098 | [`09-attack-detection-labs.md`](09-attack-detection-labs.md), [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| File Integrity Monitoring | **Demonstrated** | Configured Wazuh realtime monitoring with content-change reporting | Rule `550`; size, mtime, MD5, SHA1, SHA256 and content diff captured | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Linux Auditd monitoring | **Demonstrated** | Collected privileged-command and process execution activity through Auditd/Wazuh | Rule `80792` exercised in controlled labs | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Authentication monitoring | **Demonstrated** | Generated repeated failed SSH authentication attempts | Wazuh rule `5712`, level 10, MITRE T1110 | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Web/application log monitoring | **Demonstrated** | Collected Apache access logs and generated SQL-injection-style request | Wazuh rule `31103`, level 7, MITRE T1190 | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Linux account lifecycle monitoring | **Demonstrated** | Created and deleted test local accounts | Wazuh rules `5902` and `5903` | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Windows endpoint telemetry | **Demonstrated** | Configured Wazuh agent, Sysmon, Windows event collection, and PowerShell telemetry on `win11-01` | Windows security/process activity reached Wazuh | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Sysmon | **Demonstrated** | Installed and exercised Sysmon on Windows 11 endpoint | Process-creation telemetry observed in Wazuh | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| PowerShell logging | **Demonstrated** | Enabled PowerShell Script Block Logging and generated test activity | PowerShell telemetry collected and validated | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Identity monitoring | **Demonstrated** | Generated Active Directory user lifecycle events on `dc01` | Event IDs 4720, 4725, 4726; Wazuh account-creation alert | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Detection-path validation | **Demonstrated** | Followed administrative/attack action through source log, agent, SIEM rule and analyst review | Multiple end-to-end exercises documented | [`09-attack-detection-labs.md`](09-attack-detection-labs.md), [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Controlled offensive testing | **Supporting** | Used Kali Linux, Nmap, curl and controlled attack traffic against owned lab targets | Activity generated known telemetry without affecting production systems | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
+That investigation involved Linux storage tools, service logs, filesystem permissions, and ultimately a clean rebuild.
 
 ---
 
-# 3. Detection Evidence Matrix
+## 2. Networking and NOC Operations
 
-| Exercise | Source / Target | Detection | Rule / Event | Severity / Level | MITRE ATT&CK |
-|---|---|---|---|---:|---|
-| SSH brute force | `kali01` → `target01` | Repeated failed SSH authentication | Wazuh `5712` | 10 | `T1110` Brute Force |
-| File modification | `target01` | Realtime FIM integrity change | Wazuh `550` | 7 | `T1565.001` Stored Data Manipulation |
-| SQL-injection-style request | `kali01` → Apache on `target01` | Suspicious SQL syntax in access log | Wazuh `31103` | 7 | `T1190` Exploit Public-Facing Application |
-| Privileged Linux command | `target01` | Auditd privileged-command activity | Wazuh `80792` | 3 | Context-dependent |
-| Local account creation | Linux target | New local account | Wazuh `5902` | 8 | `T1136` Create Account |
-| Local account deletion | Linux target | Local account removed | Wazuh `5903` | 3 | `T1531` Account Access Removal |
-| AD account creation | `dc01` | Domain user created | Windows `4720` / Wazuh `60109` | 8 | `T1098` Account Manipulation |
-| AD account disable | `dc01` | Domain user disabled | Windows `4725` | — | Identity lifecycle monitoring |
-| AD account deletion | `dc01` | Domain user deleted | Windows `4726` | — | Identity lifecycle monitoring |
+| Skill | Work completed | Evidence |
+|---|---|---|
+| Managed switching | Configured and operate Cisco SG350-10 and UniFi US-8 switches | [Network documentation](04-network-vlans.md) |
+| VLANs and 802.1Q | Configured trunks and segmented networks for lab workloads | [VLAN configuration](04-network-vlans.md) |
+| Routing and firewalling | Deployed OPNsense for inter-VLAN routing and access control | [OPNsense](05-opnsense.md) |
+| Network troubleshooting | Diagnosed routing, DNS, return-path, and connectivity problems | [NOC runbook](13-noc-troubleshooting-runbook.md) |
+| DNS | Migrated Pi-hole to dedicated hardware and configured Active Directory DNS | [Pi-hole migration](02-pihole-migration.md) |
+| SNMP monitoring | Integrated managed-switch monitoring with LibreNMS | [Network documentation](04-network-vlans.md) |
+| Availability monitoring | Deployed Uptime Kuma for host and service checks | [Operations](15-homelab-operations-checklist.md) |
+| Metrics and dashboards | Deployed Prometheus and Grafana, including monitoring a remote VPS | [Asset inventory](02-asset-inventory.md) |
+| Remote access | Configured Tailscale, SSH tunnels, and browser-based administration | [Tailscale](23-tailscale-remote-access.md) |
 
-Existing sanitized screenshots are stored under:
+The `reply-to` problem in OPNsense is a particularly good troubleshooting example.
 
-```text
-evidence/wazuh/
-```
+Traffic from a trusted laptop matched an allow rule, but connections to internal services still failed. The problem involved return-path routing rather than the initial firewall permission.
 
-Current documented Linux/Wazuh evidence includes:
+After identifying the behavior and disabling reply-to on the appropriate rule, I verified the connections.
 
-```text
-01-ssh-bruteforce-rule-5712.png
-02-fim-rule-550.png
-03-sql-injection-rule-31103.png
-04-audit-sudo-rule-80792.png
-05-audit-id-rule-80792.png
-06-user-created-rule-5902.png
-07-user-deleted-rule-5903.png
-```
+This required investigating more than simple host reachability or firewall pass logs.
 
 ---
 
-# 4. Windows / Identity Skills
+## 3. Security Operations
 
-| Skill / Competency | Status | Hands-on Implementation | Validation | Documentation |
-|---|---|---|---|---|
-| Active Directory Domain Services | **Demonstrated** | Deployed `dc01` as domain controller for `corp.home.arpa` | Domain/forest/DC queries validated | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| AD-integrated DNS | **Demonstrated** | Domain DNS supports AD discovery and Windows domain operations | DNS and service-discovery validation | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Domain join | **Demonstrated** | Joined `win11-01` to `corp.home.arpa` | Computer secure channel returned valid | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| LDAP / Kerberos discovery | **Demonstrated** | Validated DNS-based domain-controller/service discovery | AD locator/service records used during troubleshooting | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| AD user administration | **Demonstrated** | Created, inspected, disabled, password-reset and deleted controlled test account | AD state and corresponding security events validated | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Domain password policy | **Demonstrated** | Inspected and worked through enforced password policy | Complexity, history, min/max age values observed | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| PowerShell administration | **Demonstrated** | Used Windows Server and AD PowerShell cmdlets for administration and validation | `Get-AD*`, account management, event queries | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Windows Security Event analysis | **Demonstrated** | Queried and interpreted account-management events | 4720, 4725 and 4726 exercised | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Windows process telemetry | **Demonstrated** | Sysmon and PowerShell logging on Windows endpoint | Process execution telemetry ingested by Wazuh | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
+| Skill | Work completed | Evidence |
+|---|---|---|
+| SIEM deployment | Installed and validated Wazuh manager, indexer, Filebeat, and dashboard | [Wazuh deployment](06-wazuh-siem.md) |
+| Endpoint enrollment | Connected Linux and Windows endpoints to Wazuh | [Wazuh](06-wazuh-siem.md) |
+| Alert investigation | Generated controlled activity and compared alerts with original logs | [Detection labs](09-attack-detection-labs.md) |
+| Authentication monitoring | Detected repeated failed SSH login attempts | [Detection Lab 1](09-attack-detection-labs.md) |
+| File Integrity Monitoring | Configured real-time file monitoring with content-change reporting | [Detection Lab 2](09-attack-detection-labs.md) |
+| Web log analysis | Detected an SQL-injection-style request in Apache logs | [Detection Lab 3](09-attack-detection-labs.md) |
+| Linux Auditd | Monitored root-level command execution and user attribution | [Detection Lab 4](09-attack-detection-labs.md) |
+| Account monitoring | Detected local Linux account creation and deletion | [Detection Lab 5](09-attack-detection-labs.md) |
+| Windows Sysmon | Collected process-creation telemetry and validated Wazuh alerts | [Windows telemetry](08-windows-telemetry.md) |
+| PowerShell logging | Enabled Script Block Logging and detected a test registry modification | [Windows telemetry](08-windows-telemetry.md) |
+| Active Directory monitoring | Generated Windows Security Event 4720 and verified Wazuh Rule 60109 | [Active Directory](10-active-directory-lab.md) |
+| MITRE ATT&CK | Reviewed mappings associated with controlled detection exercises | [Detection labs](09-attack-detection-labs.md) |
 
----
+These exercises are not examples of responding to live production incidents.
 
-# 5. NOC / Infrastructure Operations Skills
-
-The lab already demonstrates several NOC-adjacent operational skills even though
-the dedicated Zabbix/SNMP phase is not yet complete.
-
-| Skill / Competency | Status | Hands-on Implementation | Validation / Evidence | Documentation |
-|---|---|---|---|---|
-| Service availability validation | **Demonstrated** | Verified DNS, Wazuh, Proxmox nodes, storage and agents before/after changes | Service-state, connectivity and functional checks | Multiple documents |
-| Resource monitoring | **Demonstrated** | Checked memory, storage utilization and cluster-wide resources | `free -h`, `pvesm status`, `pvesh` resource views | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Network connectivity troubleshooting | **Demonstrated** | Validated IP, routes, DNS, ports and service reachability | `ip`, resolver tools, `nc`, host/service tests | Multiple documents |
-| Infrastructure health checks | **Demonstrated** | Verified cluster membership, quorum, storage availability and endpoint agents | Repeated before/after validation workflows | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| DNS service operations | **Demonstrated** | Physical Pi-hole migration, cutover and service validation | Port 53, filtering, resolution and client operation | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Backup operations | **Demonstrated** | Remote backup verification and restore testing | Proxmox backup/restore workflow | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Capacity awareness | **Demonstrated** | Reviewed RAM, storage and guest allocations before deploying workloads | Proxmox/Linux resource checks | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Root-cause analysis | **Demonstrated** | Diagnosed Wazuh/OpenSearch installation failure caused by guest storage allocation | Failure → storage diagnosis → rebuild/recovery → service validation | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Asset management | **Demonstrated** | Current-state asset, IP, role and monitoring inventory | Operational/planned distinction maintained | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| Network monitoring with Zabbix | **Planned** | Dedicated NOC monitoring server and agents | Not yet claimed as operational | `07-zabbix-monitoring.md` |
-| Cisco managed-switch baseline / CLI | **Demonstrated** | Bench-configured Cisco SG350-10 as `sw01`; assigned management address, validated firmware and VLAN state, and exported a baseline configuration | `show version`, `show vlan`, configuration backup, staging record | [`04-network-vlans.md`](04-network-vlans.md) |
-| **SNMP** monitoring | **Operational / expanding** | Cisco switch and infrastructure telemetry | `sw01` successfully monitored by LibreNMS via SNMP; broader SNMPv3 rollout remains future work | LibreNMS / network-monitoring phase |
-| Managed-switch production operation | **Demonstrated** | Operate `sw01` trunks/uplink and inspect RSTP, counters, LLDP, and MAC state | Live Gi1-Gi4 guest trunks and Gi8 upstream validated | [`04-network-vlans.md`](04-network-vlans.md) |
-| VLAN segmentation | **Demonstrated / remediation active** | Management/server/user/SOC/attack/DMZ networks | VLANs 20-60 carry migrated guests; dependency cleanup tracked in issue #1 | [`04-network-vlans.md`](04-network-vlans.md) |
-| OPNsense firewalling / routing | **Demonstrated / remediation active** | Inter-VLAN routing and source-interface policy | Routed flows and reply-to behavior validated; policy audit remains open | [`05-opnsense.md`](05-opnsense.md) |
+They demonstrate the underlying process: generating a known event, finding the source evidence, locating the resulting SIEM alert, and examining what the detection means.
 
 ---
 
-# 6. Troubleshooting and Operational Method
+## 4. Detection Evidence
 
-A recurring workflow across the repository is:
+The following results were recorded during the lab exercises.
 
-```text
-Identify the system
-        |
-        v
-Collect current state
-        |
-        v
-Check addressing / routes / DNS
-        |
-        v
-Check service state
-        |
-        v
-Check storage / resources
-        |
-        v
-Check source logs / telemetry
-        |
-        v
-Change one thing
-        |
-        v
-Retest
-        |
-        v
-Document result
-```
+| Detection | Wazuh rule | Level | Related technique |
+|---|---:|---:|---|
+| SSH brute force | `5712` | 10 | `T1110` |
+| File modification | `550` | 7 | `T1565.001` |
+| SQL-injection-style request | `31103` | 7 | `T1190` |
+| Privileged Linux command | `80792` | 3 | Context-dependent |
+| Local account creation | `5902` | 8 | `T1136` |
+| Local account deletion | `5903` | 3 | `T1531` |
+| Windows PowerShell process | `92027` | 4 | `T1059.001` |
+| PowerShell registry modification | `91843` | 3 | `T1059.001`, `T1112` |
+| Active Directory account creation | `60109` | 8 | `T1098` |
 
-This method has been applied to:
+The recorded rule numbers and levels correspond to the lab configuration used during testing.
 
-- Proxmox host and cluster rebuilds
-- VM/LXC backup and restoration
-- DNS migration
-- Wazuh installation failures
-- Linux-agent enrollment
-- Windows Wazuh-agent setup
-- Sysmon and PowerShell telemetry
-- Active Directory DNS/domain discovery
-- Password-policy errors
-- Security-event validation
-
-This is relevant to both SOC and NOC work because effective operations depend on
-collecting evidence before changing systems and verifying the result afterward.
+Screenshots and supporting evidence are included in the individual detection documents and under [`evidence/wazuh/`](../evidence/wazuh/).
 
 ---
 
-# 7. Evidence-Backed Interview Examples
+## 5. Windows and Identity Administration
 
-## "Tell me about a SIEM you have worked with."
+Beyond the SIEM exercises, I've worked with several Windows administration tasks.
 
-I deployed Wazuh in my homelab, validated its core services, enrolled Linux and
-Windows endpoints, and used it for controlled detection exercises. I have
-followed activity from the endpoint or application log through Wazuh ingestion,
-rule correlation, MITRE ATT&CK mapping, and analyst validation.
-
-See:
-
-- [`06-wazuh-siem.md`](06-wazuh-siem.md)
-- [`09-attack-detection-labs.md`](09-attack-detection-labs.md)
-
-## "Tell me about a problem you troubleshot."
-
-During a Wazuh deployment, the virtual disk size visible in Proxmox did not
-match the space available to the Ubuntu root filesystem. OpenSearch reached its
-disk flood-stage threshold, placed an internal security index into read-only
-mode, and the installer failed. I traced the failure through disk and LVM state,
-identified the storage-allocation problem, and documented the recovery/rebuild
-decision and final validation.
-
-See:
-
-- [`06-wazuh-siem.md`](06-wazuh-siem.md)
-
-## "What Active Directory experience do you have?"
-
-I built a lab Active Directory domain, configured AD-integrated DNS, joined a
-Windows 11 workstation, validated domain discovery and the computer secure
-channel, administered a test user through its lifecycle, and correlated Windows
-Security account-management events into Wazuh.
-
-See:
-
-- [`10-active-directory-lab.md`](10-active-directory-lab.md)
-
-## "What virtualization experience do you have?"
-
-I administer a four-node Proxmox VE cluster using KVM/QEMU and LXC. I have
-worked with cluster membership, quorum, rolling node updates, workload
-migration, local and shared storage, guest inventory, backup/restoration,
-resource checks, Linux networking and centralized cluster management.
-
-See:
-
-- [`01-proxmox-backup.md`](01-proxmox-backup.md)
-- [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md)
-- [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md)
-
-## "How do you validate a security alert?"
-
-For controlled labs I compare the SIEM alert with the source of truth on the
-endpoint or application. For example, an SSH brute-force alert is compared with
-the SSH journal, a SQL-injection-style alert with the Apache access log, a file
-integrity alert with the actual file operation and hashes, and an AD account
-alert with the Windows Security event and AD account state.
-
-See:
-
-- [`09-attack-detection-labs.md`](09-attack-detection-labs.md)
-- [`10-active-directory-lab.md`](10-active-directory-lab.md)
-
----
-
-# 8. Current Skills Coverage
-
-## Strongest Demonstrated Areas
-
-- Proxmox VE administration
-- KVM/QEMU and LXC
-- Linux administration
-- DNS operations
-- Backup and restoration
-- Wazuh SIEM deployment and operation
-- Linux security telemetry
-- Windows endpoint telemetry
-- Sysmon
-- PowerShell logging
-- Active Directory and AD-integrated DNS
-- Windows Security Event analysis
-- File Integrity Monitoring
-- Auditd
-- Alert investigation
-- MITRE ATT&CK mapping
-- Controlled attack/detection validation
-- Troubleshooting and root-cause analysis
-- Asset inventory
-- Technical documentation
-
-## Next Skills to Convert From Planned to Demonstrated
-
-- Cisco managed-switch production cutover and port operations
-- VLAN implementation
-- 802.1Q trunking
-- SNMPv3
-- Switch syslog
-- SPAN / port mirroring
-- OPNsense routing and firewalling
-- Inter-VLAN policy
-- Zabbix infrastructure monitoring
-- Availability / latency / packet-loss monitoring
-- Network and service alerting
-- Suricata network-security telemetry
-
-These planned items are intentionally separated from demonstrated skills until
-the implementation and validation evidence exists.
-
----
-
-# 9. Repository Evidence Index
-
-| Area | Primary Documentation |
+| Skill | Validation |
 |---|---|
-| Backup / disaster recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| DNS / Pi-hole | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md), [`16-proxmox-node-expansion.md`](16-proxmox-node-expansion.md) |
-| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
-| Wazuh SIEM | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Detection exercises | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Detection screenshots | [`../evidence/wazuh/`](../evidence/wazuh/) |
-| Current architecture | [`../diagrams/current-architecture.md`](../diagrams/current-architecture.md) |
+| Active Directory Domain Services | Created the `corp.home.arpa` domain |
+| Active Directory DNS | Checked domain and LDAP/Kerberos service discovery |
+| Domain joining | Joined Windows 11 to Active Directory |
+| Secure-channel verification | Used `Test-ComputerSecureChannel` |
+| Account administration | Created, inspected, disabled, and deleted a test domain account |
+| Password policy | Inspected policy settings and resolved a password-compliance issue |
+| Windows Security logs | Queried account-management events through PowerShell |
+| Windows service administration | Troubleshot Wazuh agent installation and service permissions |
+
+The supporting commands and results are in the [Active Directory Lab](10-active-directory-lab.md) and [Windows Endpoint Telemetry](08-windows-telemetry.md).
 
 ---
 
-# 10. Summary
+## 6. Troubleshooting and Operational Work
 
-The value of this homelab is not simply that the technologies are installed.
+Much of the work in the lab involves problems that weren't part of the original installation plan.
 
-The repository demonstrates a repeatable operational cycle:
+Some documented examples include:
 
-```text
-Build
-  ↓
-Configure
-  ↓
-Validate
-  ↓
-Generate activity
-  ↓
-Observe telemetry
-  ↓
-Investigate
-  ↓
-Troubleshoot
-  ↓
-Recover / remediate
-  ↓
-Verify
-  ↓
-Document
-```
+| Problem | Investigation and result |
+|---|---|
+| Wazuh installation failed | Identified insufficient root filesystem allocation and rebuilt successfully |
+| Wazuh indexer wouldn't start | Investigated an access-denied error involving an indexer backup directory |
+| Windows Wazuh agent missing | Verified the MSI hadn't installed, reinstalled it, and corrected service-control permissions |
+| OPNsense allowed traffic but connections failed | Identified and corrected reply-to routing behavior |
+| Remote lab access failed while traveling | Investigated overlapping subnets and used alternative Tailscale/SSH access paths |
+| Backup reliability needed validation | Restored a Docker VM into an isolated test instance and checked its services |
 
-That cycle is directly relevant to entry-level and junior work in:
+These examples are particularly useful because they show diagnosis and verification, not simply installation.
 
-- Security Operations Centers
-- Network Operations Centers
-- Security analyst roles
-- Systems administration
-- Infrastructure support
-- Endpoint monitoring
-- Technical operations
+---
+
+## 7. Projects Still in Progress or Planned
+
+Some services are operational but still being expanded. Others are planned and shouldn't be presented as completed deployments.
+
+| Project | Status |
+|---|---|
+| VLAN migration | Operational, with remaining dependencies and address cleanup |
+| Default-LAN renumbering | Planned; considering `192.168.11.0/24` |
+| OPNsense rule cleanup | In progress |
+| SNMPv3 expansion | Planned |
+| OpenVAS vulnerability-scanning exercise | Planned/documentation in progress |
+| Zabbix monitoring | Planned, not deployed |
+| Custom Wazuh rules and Active Response | Planned |
+| Additional recovery testing | Ongoing |
+| Infrastructure automation | Ongoing development |
+
+I intend to update this matrix when the corresponding implementation and validation work is documented.
+
+---
+
+## 8. Documentation and Evidence
+
+The repository serves as a technical record of the homelab.
+
+My documentation includes:
+
+- System and network configurations
+- Commands used during deployments
+- Validation checks and actual results
+- Failed attempts and troubleshooting
+- Recovery procedures
+- Detection rules and evidence
+- Infrastructure decisions and tradeoffs
+- Work that's still planned
+
+I try to distinguish an installed service from a tested service, and a tested service from one I've actually used to investigate a problem.
+
+That distinction matters when describing the experience accurately.
+
+---
+
+## Summary
+
+The strongest areas demonstrated in this repository are Proxmox and Linux administration, managed switching and VLANs, DNS, OPNsense routing, backup and recovery, Wazuh SIEM operations, Windows telemetry, Active Directory, and technical troubleshooting.
+
+The homelab isn't a production SOC or NOC.
+
+It's a working environment where I can build systems, generate controlled problems, observe their behavior, investigate failures, and document the results.
+
+This page is intended to make the supporting evidence easy to find.
+
+## Related Documentation
+
+- [Repository Overview](../README.md)
+- [Asset Inventory](02-asset-inventory.md)
+- [Proxmox Cluster](03-proxmox-cluster-build.md)
+- [Network and VLANs](04-network-vlans.md)
+- [Wazuh SIEM](06-wazuh-siem.md)
+- [Detection Labs](09-attack-detection-labs.md)
+- [Active Directory](10-active-directory-lab.md)
+- [Backup Restore Validation](21-proxmox-backup-restore-validation.md)
