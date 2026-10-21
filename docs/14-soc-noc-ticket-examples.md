@@ -1,69 +1,41 @@
 # SOC/NOC Incident and Change Ticket Examples
 
-> Historical ticket evidence: addresses and infrastructure states are preserved as recorded at the time. They are not a current configuration source.
+## Overview
 
-## Purpose
+This page contains incident and change records based on work I've carried out in my homelab.
 
-This document contains realistic incident, service, and change-ticket examples
-based on work actually performed in the SOC/NOC homelab.
+I use a ticket-style format to practice documenting operational problems: what happened, what I checked, what I found, what I changed, and whether the result was verified.
 
-The objective is to demonstrate how technical work can be communicated in an
-operations environment where another analyst, administrator, or manager may need
-to understand:
+These aren't tickets exported from a professional service-management system. They're records I've written from my own troubleshooting and lab notes.
 
-- what was reported;
-- what was affected;
-- what evidence was collected;
-- what was changed;
-- whether service was restored;
-- what remains to be done.
+Some describe completed incidents or planned changes that were successfully implemented. A separate section contains example handoffs and templates for future use.
 
-These examples are written in a concise ticket style rather than as long-form
-lab reports.
-
-They are not intended to imply experience with a specific commercial ticketing
-platform.
+Addresses in historical tickets reflect the systems at the time and may differ from their current VLAN assignments.
 
 ---
 
-# Ticket 1 — Wazuh Installation Failure Due to Disk Allocation
+## Ticket 1 — Wazuh Installation Failure
 
-## Type
+**Type:** Deployment incident  
+**Priority:** P3  
+**Historical address:** `wazuh01` — `192.168.1.206`  
+**Status:** Resolved
 
-Incident / deployment failure
+### Problem
 
-## Priority
+The Wazuh installation assistant failed while updating OpenSearch security-user configuration.
 
-P3 — Medium
+The initial error suggested an authentication problem.
 
-## Affected System
+### Investigation
 
-```text
-wazuh01
-192.168.1.206
-```
-
-## Summary
-
-Wazuh installation failed during the final OpenSearch security-user
-configuration stage.
-
-## Reported / Observed Symptom
-
-The Wazuh installation assistant deployed the major components but did not
-complete successfully.
-
-The dashboard and indexer later showed additional operational problems.
-
-## Initial Checks
-
-Reviewed the installation log:
+I reviewed the installer log:
 
 ```bash
 sudo tail -n 80 /var/log/wazuh-install.log
 ```
 
-Checked filesystem and storage allocation:
+Then checked filesystem capacity and LVM:
 
 ```bash
 df -h /
@@ -73,269 +45,128 @@ sudo vgs
 sudo lvs
 ```
 
-## Findings
+The Ubuntu root logical volume wasn't using all the space available on the virtual disk.
 
-The Proxmox VM had been assigned a larger virtual disk than the Ubuntu root
-logical volume was actually using.
+OpenSearch had crossed its flood-stage disk watermark and placed its security index into read-only mode.
 
-OpenSearch crossed its flood-stage disk watermark and placed the security index
-into read-only mode.
+### Resolution
 
-The installer then failed while attempting to update internal security
-configuration.
-
-## Root Cause
-
-Ubuntu LVM had not allocated all available virtual-disk capacity to the root
-logical volume.
-
-## Corrective Action
-
-Expanded the root logical volume:
+I expanded the root logical volume:
 
 ```bash
 sudo lvextend -l +100%FREE -r /dev/ubuntu-vg/ubuntu-lv
 ```
 
-Verified new filesystem capacity:
+The filesystem problem was corrected, but the incomplete installation had left authentication settings inconsistent.
 
-```bash
-df -h /
-```
+Because the VM contained no production data or custom Wazuh rules, I rebuilt it cleanly.
 
-Additional recovery attempts exposed inconsistent credential state after the
-interrupted installation.
+### Verification
 
-Because the environment was new and contained no production data or custom
-rules, the VM was rebuilt cleanly rather than continuing to repair a partially
-configured deployment.
+The rebuilt Wazuh installation completed, the four main services were active, and dashboard authentication succeeded.
 
-## Validation
-
-After rebuild:
-
-- hostname verified;
-- networking verified;
-- Pi-hole DNS verified;
-- root filesystem capacity verified;
-- QEMU guest agent verified;
-- Wazuh installation completed;
-- Wazuh core services reported active;
-- dashboard authentication succeeded.
-
-## Final Status
-
-Resolved.
-
-## Preventive / Follow-Up Action
-
-Added guest-filesystem capacity validation to the Wazuh deployment checklist.
+**Follow-up:** Check guest filesystem capacity before installing storage-intensive applications.
 
 ---
 
-# Ticket 2 — Wazuh Indexer Service Failure
+## Ticket 2 — Wazuh Indexer Access-Denied Error
 
-## Type
+**Type:** Service incident  
+**Priority:** P3  
+**Service:** `wazuh-indexer`  
+**Status:** Resolved during deployment recovery
 
-Incident
+### Problem
 
-## Priority
+The Wazuh indexer failed to start during recovery of the first installation.
 
-P3 — Medium
-
-## Affected Service
-
-```text
-wazuh-indexer
-```
-
-## Summary
-
-Wazuh indexer failed to start during recovery of the first Wazuh deployment.
-
-## Investigation
-
-Checked detailed service state:
+### Investigation
 
 ```bash
 sudo systemctl status wazuh-indexer --no-pager -l
-```
-
-Reviewed the systemd journal:
-
-```bash
 sudo journalctl -xeu wazuh-indexer.service --no-pager
 ```
 
-## Finding
-
-The service log showed:
+The service journal showed:
 
 ```text
 java.nio.file.AccessDeniedException:
 /etc/wazuh-indexer/backup
 ```
 
-## Root Cause
+### Resolution
 
-Incorrect filesystem permissions on an installer-created backup directory
-prevented the indexer from accessing required files.
+I corrected the affected backup-directory permissions and restarted the service.
 
-## Corrective Action
+### Verification
 
-Corrected permissions on the affected directory and restarted the service.
+The indexer started and was listening on TCP port 9200.
 
-## Validation
-
-Confirmed:
-
-- indexer service started;
-- indexer listened on TCP port 9200;
-- recovery work could continue.
-
-## Final Status
-
-Resolved as part of the broader Wazuh deployment recovery.
+Further recovery work showed that the overall installation still had credential problems, leading to the clean rebuild described in Ticket 1.
 
 ---
 
-# Ticket 3 — Pi-hole Migration / DNS Service Change
+## Ticket 3 — Pi-hole Migration
 
-## Type
+**Type:** Planned infrastructure change  
+**Priority:** P4  
+**Service:** DNS  
+**Status:** Completed
 
-Planned change
+### Objective
 
-## Priority
+Move Pi-hole from a Proxmox LXC container to a physical Raspberry Pi so Proxmox maintenance wouldn't interrupt household DNS.
 
-P4 — Low / planned maintenance
+### Change
 
-## Change Objective
-
-Move Pi-hole DNS from a Proxmox-hosted LXC container to a dedicated Raspberry Pi
-without requiring broad client DNS changes.
-
-## Existing Service Address
-
-```text
-192.168.1.20
-```
-
-## New Host
+I prepared a Raspberry Pi, installed Pi-hole, and assigned the existing DNS service address to the new system.
 
 ```text
 dns01
-Raspberry Pi 3 Model B+
 192.168.1.20
 ```
 
-## Reason for Change
+The original Pi-hole LXC was removed from DNS service after the replacement was working.
 
-DNS was a critical home-network dependency hosted inside the virtualization
-environment.
+### Verification
 
-Moving DNS to a physical Raspberry Pi reduces the risk that Proxmox host
-maintenance or cluster changes disrupt DNS for the rest of the network.
+I confirmed the Pi-hole service was active, filtering was enabled, and clients could continue resolving hostnames.
 
-## Pre-Change Checks
+Keeping the same IP address avoided a broad client DNS reconfiguration.
 
-- Raspberry Pi configured and updated.
-- Hostname changed to `dns01`.
-- Pi-hole installed.
-- DNS service verified.
-- Port 53 confirmed available.
-- Pi-hole filtering confirmed enabled.
-
-## Change Performed
-
-The dedicated Raspberry Pi was assigned the existing Pi-hole service address:
-
-```text
-192.168.1.20
-```
-
-Clients were cut over only after the replacement service was operational.
-
-The old Pi-hole LXC was removed from DNS service afterward.
-
-## Validation
-
-Confirmed:
-
-- `dns01` reachable;
-- Pi-hole running;
-- filtering enabled;
-- normal DNS resolution continued;
-- Internet access continued;
-- client-side DNS address changes were not required.
-
-## Rollback Plan
-
-If the new Pi-hole failed during cutover, restore DNS service to the previous
-known-good platform before retiring the old instance.
-
-## Final Status
-
-Successful.
+**Result:** Successful change.
 
 ---
 
-# Ticket 4 — Proxmox Three-Node Cluster Validation
+## Ticket 4 — Initial Proxmox Cluster Validation
 
-## Type
+**Type:** Infrastructure change  
+**Priority:** P4  
+**Cluster:** `homelab`  
+**Status:** Completed
 
-Infrastructure change / implementation
+### Objective
 
-## Priority
+Create and validate the initial three-node Proxmox cluster.
 
-P4 — Planned
+| Node | IP address |
+|---|---|
+| `pve01` | `192.168.1.10` |
+| `pve02` | `192.168.1.11` |
+| `pve03` | `192.168.1.12` |
 
-## Change Objective
+### Validation
 
-Create and validate the primary three-node Proxmox VE cluster.
-
-## Cluster
-
-```text
-homelab
-```
-
-## Nodes
-
-```text
-pve01   192.168.1.10
-pve02   192.168.1.11
-pve03   192.168.1.12
-```
-
-## Validation Performed
-
-Checked cluster status:
+I checked cluster membership, quorum, node state, and storage.
 
 ```bash
 pvecm status
-```
-
-Checked membership:
-
-```bash
 pvecm nodes
-```
-
-Checked node state:
-
-```bash
 pvesh get /nodes
-```
-
-Checked storage:
-
-```bash
 pvesm status
 ```
 
-## Result
-
-Verified:
+The recorded cluster state was:
 
 ```text
 Nodes:          3
@@ -343,214 +174,101 @@ Expected votes: 3
 Total votes:    3
 Quorum:         2
 Quorate:        Yes
-Transport:      knet
-Secure auth:    on
 ```
 
-All three nodes appeared online.
+### Result
 
-## Storage State
+All three nodes were recognized and the cluster was quorate.
 
-Validated:
-
-```text
-local
-local-lvm
-t-20-backup
-```
-
-## Risk / Design Note
-
-Ceph and Proxmox HA automatic workload failover were intentionally not deployed
-during this phase.
-
-The goal was first to establish a stable, understandable cluster with local
-storage and verified shared backups.
-
-## Final Status
-
-Successful.
+The cluster was later expanded to four nodes, as documented separately.
 
 ---
 
-# Ticket 5 — Windows Endpoint Domain Join
+## Ticket 5 — Windows 11 Domain Join
 
-## Type
+**Type:** Infrastructure change  
+**Priority:** P4  
+**System:** `win11-01`  
+**Domain:** `corp.home.arpa`  
+**Status:** Completed
 
-Service request / infrastructure change
+### Objective
 
-## Priority
+Join the Windows endpoint to Active Directory and verify domain connectivity.
 
-P4 — Low / planned
+At the time of the initial domain work, `dc01` was recorded at `192.168.1.30`. Its later VLAN 20 address is `10.10.20.10`.
 
-## Affected Endpoint
+### Change and Validation
 
-```text
-win11-01
-```
+I joined the workstation to `corp.home.arpa` and restarted it.
 
-## Target Domain
-
-```text
-corp.home.arpa
-```
-
-## Domain Controller
-
-```text
-dc01
-192.168.1.30
-```
-
-## Objective
-
-Join the Windows 11 endpoint to the lab Active Directory domain and validate
-domain connectivity.
-
-## Pre-Change Validation
-
-Verified:
-
-- endpoint networking;
-- DNS configuration;
-- domain-controller resolution;
-- Active Directory DNS availability;
-- domain-controller discovery.
-
-## Change
-
-Joined `win11-01` to:
-
-```text
-corp.home.arpa
-```
-
-## Post-Change Validation
-
-Verified the computer secure channel:
+I then checked the domain secure channel:
 
 ```powershell
 Test-ComputerSecureChannel -Verbose
 ```
 
-## Result
+The secure-channel check succeeded.
 
-Secure-channel validation succeeded.
-
-## Final Status
-
-Successful.
+**Result:** Successful domain join.
 
 ---
 
-# Ticket 6 — Active Directory Test User Creation Alert
+## Ticket 6 — Active Directory Account Creation Alert
 
-## Type
+**Type:** Security detection exercise  
+**Priority:** P5 — Controlled test  
+**System:** `dc01`  
+**Status:** Closed — expected activity
 
-Security alert
+### Event
 
-## Priority
+I created a test Active Directory user named `soc-lab-user`.
 
-P5 — Controlled lab test
+Windows generated Security Event ID `4720`.
 
-## Alert
+Wazuh generated:
 
-```text
-Windows Event ID: 4720
-Wazuh Rule:       60109
-Level:            8
-MITRE ATT&CK:     T1098 - Account Manipulation
-```
+| Field | Value |
+|---|---|
+| Rule | `60109` |
+| Level | 8 |
+| MITRE ATT&CK | `T1098` |
 
-## Affected System
+### Validation
 
-```text
-dc01
-```
-
-## Affected Account
-
-```text
-soc-lab-user
-```
-
-## Summary
-
-Wazuh generated an identity-related security alert after a controlled Active
-Directory user account was created.
-
-## Validation
-
-Queried Windows Security logs:
+On the domain controller:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{
     LogName = 'Security'
-    Id      = 4720
+    Id = 4720
 } -MaxEvents 20
 ```
 
-Inspected Active Directory account state:
+I also inspected the test account:
 
 ```powershell
 Get-ADUser soc-lab-user -Properties *
 ```
 
-## Findings
+The Active Directory event matched the Wazuh detection.
 
-The Windows Security event and Active Directory account state matched the Wazuh
-alert.
-
-## Classification
-
-```text
-True Positive — Expected
-```
-
-The account creation was intentionally generated as part of the lab.
-
-## Analyst Assessment
-
-The test validated the complete telemetry path:
-
-```text
-AD administrative action
-        ↓
-Windows Security Event
-        ↓
-Wazuh collection
-        ↓
-Rule 60109
-        ↓
-MITRE T1098 mapping
-        ↓
-Analyst investigation
-```
-
-## Final Status
-
-Closed — expected test activity.
+**Classification:** True positive — expected.
 
 ---
 
-# Ticket 7 — Active Directory Password Policy Failure
+## Ticket 7 — Active Directory Password-Policy Failure
 
-## Type
+**Type:** Administrative issue  
+**Priority:** P4  
+**Status:** Resolved
 
-Service request / administrative issue
+### Problem
 
-## Priority
+A test-account password operation failed because the supplied password did not satisfy the domain policy.
 
-P4 — Low
-
-## Summary
-
-Initial test-account password operation did not complete because the supplied
-password did not satisfy domain policy.
-
-## Investigation
-
-Reviewed the default domain password policy:
+### Investigation
 
 ```powershell
 Get-ADDefaultDomainPasswordPolicy |
@@ -561,959 +279,305 @@ Select-Object MinPasswordLength,
               MaxPasswordAge
 ```
 
-## Observed Policy
+The policy required password complexity, tracked 24 previous passwords, and specified minimum and maximum ages of one and 42 days.
 
-```text
-MinPasswordLength    : 7
-ComplexityEnabled    : True
-PasswordHistoryCount : 24
-MinPasswordAge       : 1 day
-MaxPasswordAge       : 42 days
-```
+### Resolution
 
-## Root Cause
-
-The supplied test password did not meet domain password requirements.
-
-## Corrective Action
-
-Entered a new compliant password securely:
+I entered a compliant password as a SecureString and reset the account password.
 
 ```powershell
 $pw = Read-Host "Enter a NEW compliant password for soc-lab-user" -AsSecureString
-```
 
-Reset the password:
-
-```powershell
 Set-ADAccountPassword `
     -Identity "soc-lab-user" `
     -Reset `
     -NewPassword $pw
 ```
 
-## Validation
+The command completed successfully.
 
-The command completed successfully and the account remained manageable in
-Active Directory.
-
-## Final Status
-
-Resolved.
+**Result:** Resolved.
 
 ---
 
-# Ticket 8 — SSH Brute-Force Detection
+## Tickets 8–10 — Controlled Wazuh Detection Exercises
 
-## Type
+These three tickets represent separate tests. Their complete commands and evidence are retained in the [Wazuh Detection Labs](09-attack-detection-labs.md).
 
-Security alert
+| Ticket | Activity | Detection | Result |
+|---|---|---|---|
+| 8 | Eight failed SSH logins from `kali01` to `target01` | Wazuh `5712`, Level 10 | Verified against SSH journal |
+| 9 | Configuration-file modification on `target01` | Wazuh `550`, Level 7 | Hashes and content changes captured |
+| 10 | SQL-injection-style request to Apache | Wazuh `31103`, Level 7 | Access-log entry verified; HTTP 404 |
 
-## Priority
+All three were classified as **true positives involving expected lab activity**.
 
-P5 — Controlled test
-
-## Source
-
-```text
-kali01
-```
-
-## Target
-
-```text
-target01
-192.168.1.238
-```
-
-## Alert
-
-```text
-Wazuh Rule: 5712
-Level:      10
-MITRE:      T1110 - Brute Force
-```
-
-## Summary
-
-Repeated failed SSH authentication attempts generated a Wazuh brute-force
-alert.
-
-## Source Validation
-
-Reviewed the endpoint SSH log:
-
-```bash
-sudo journalctl -u ssh
-```
-
-## Findings
-
-The underlying SSH events matched the SIEM alert.
-
-## Classification
-
-```text
-True Positive — Expected
-```
-
-## Analyst Assessment
-
-The test demonstrated that Wazuh detected repeated authentication failures and
-that the alert could be independently verified against the source endpoint log.
-
-## Final Status
-
-Closed — controlled test successful.
+The web request did not demonstrate successful exploitation.
 
 ---
 
-# Ticket 9 — File Integrity Monitoring Alert
+## Ticket 11 — Wazuh Agent Connectivity
 
-## Type
+**Type:** Diagnostic template  
+**Priority:** Assigned according to impact  
+**Status:** Template — not a separately verified incident
 
-Security alert
-
-## Priority
-
-P5 — Controlled test
-
-## Target
-
-```text
-target01
-```
-
-## Alert
-
-```text
-Wazuh Rule: 550
-Level:      7
-MITRE:      T1565.001 - Stored Data Manipulation
-```
-
-## Summary
-
-A monitored configuration file was modified during a controlled FIM exercise.
-
-## Test Path
-
-```text
-/opt/wazuh-lab/test.conf
-```
-
-## Validation
-
-Wazuh recorded:
-
-- file modification;
-- size change;
-- modification time;
-- MD5 hash;
-- SHA1 hash;
-- SHA256 hash;
-- content difference.
-
-## Findings
-
-The FIM event accurately reflected the controlled file modification.
-
-## Classification
-
-```text
-True Positive — Expected
-```
-
-## Final Status
-
-Closed — detection validated.
-
----
-
-# Ticket 10 — SQL-Injection-Style Web Request Alert
-
-## Type
-
-Security alert
-
-## Priority
-
-P5 — Controlled test
-
-## Source
-
-```text
-kali01
-```
-
-## Target
-
-```text
-target01
-Apache
-```
-
-## Alert
-
-```text
-Wazuh Rule: 31103
-Level:      7
-MITRE:      T1190
-```
-
-## Test Activity
-
-A controlled request containing SQL-style syntax was sent to the Apache server.
-
-## Source Validation
-
-Checked:
-
-```bash
-/var/log/apache2/access.log
-```
-
-## Findings
-
-The suspicious request was present in the source Apache log.
-
-The server returned:
-
-```text
-HTTP 404
-```
-
-because the requested application path did not exist.
-
-## Analyst Assessment
-
-Suspicious request detected.
-
-Successful exploitation was **not** demonstrated.
-
-## Classification
-
-```text
-True Positive — Expected
-```
-
-## Final Status
-
-Closed — detection validated.
-
----
-
-# Ticket 11 — Wazuh Agent Connectivity Check
-
-## Type
-
-Incident / monitoring issue
-
-## Priority
-
-P3 — Medium
-
-## Symptom
-
-Endpoint does not appear active in Wazuh or telemetry stops arriving.
-
-## Initial Checks
-
-On the Linux endpoint:
+If an endpoint stops appearing in Wazuh, the initial checks include:
 
 ```bash
 systemctl is-active wazuh-agent
+nc -zv 10.10.40.20 1514
+nc -zv 10.10.40.20 1515
 ```
 
-Check manager ports:
+I would then check the manager address, firewall path, enrollment state, agent logs, and whether fresh telemetry is arriving.
 
-```bash
-nc -zv 192.168.1.206 1514
-nc -zv 192.168.1.206 1515
-```
-
-## Investigation Areas
-
-- agent service state;
-- network connectivity;
-- manager IP;
-- enrollment;
-- firewall path;
-- Wazuh manager availability;
-- endpoint time;
-- DNS if hostnames are used.
-
-## Escalation Condition
-
-Escalate or broaden investigation if:
-
-- service is active;
-- required ports are reachable;
-- configuration is correct;
-- but telemetry still does not arrive.
-
-## Final Status
-
-Template for future monitoring incidents.
+The original document included this as a ticket example. I'm keeping it as a reusable diagnostic template rather than presenting it as an incident with an established resolution.
 
 ---
 
-# Ticket 12 — Proxmox Backup Target Verification
+## Ticket 12 — Proxmox Backup Target Validation
 
-## Type
+**Type:** Maintenance validation  
+**Priority:** P4  
+**Storage:** `t-20-backup`  
+**Status:** Completed
 
-Maintenance / backup validation
+### Objective
 
-## Priority
+Confirm that the shared Proxmox backup destination was available before rebuild work.
 
-P4 — Planned
-
-## Objective
-
-Verify the remote Proxmox backup target before performing destructive rebuild
-work.
-
-## Storage
-
-```text
-t-20-backup
-```
-
-## Checks
+### Checks
 
 ```bash
 pvesm status
-```
-
-Then:
-
-```bash
 pvesm list t-20-backup
 ```
 
-## Purpose
+The backup target was active, and Proxmox could list its contents.
 
-Confirm that Proxmox itself can:
+The backup and restore process was later tested more extensively, including restoring a Docker VM into an isolated temporary guest.
 
-- see the storage;
-- report it active;
-- list existing backup content.
-
-## Validation
-
-Backup content was visible through Proxmox storage tools.
-
-Restore testing was also performed during the backup/recovery phase.
-
-## Final Status
-
-Successful.
+**Result:** Shared backup target verified.
 
 ---
 
-# Ticket 13 — Guacamole RDP Connectivity Issue
+## Ticket 13 — Guacamole RDP Connectivity
 
-## Type
+**Type:** Application-connectivity incident  
+**Priority:** P4  
+**Target:** Windows RDP — `192.168.1.189:3389`  
+**Status:** Resolved
 
-Incident
+### Problem
 
-## Priority
+Apache Guacamole initially couldn't establish an RDP session.
 
-P4 — Low
+### Investigation
 
-## Symptom
-
-Apache Guacamole could not initially connect to a Windows 11 RDP target.
-
-## Target
-
-```text
-192.168.1.189
-TCP 3389
-```
-
-## Validation
-
-From the Guacamole host:
+From the Guacamole system:
 
 ```bash
 nc -vz 192.168.1.189 3389
 ```
 
-## Result
+The TCP port was reachable.
 
-TCP 3389 was reachable.
+That suggested basic network connectivity wasn't the cause.
 
-## Interpretation
+### Result
 
-The successful TCP test showed that:
+The Guacamole RDP connection was subsequently working.
 
-- the network path was working;
-- the destination was reachable;
-- RDP was listening.
-
-Therefore, the remaining issue was above basic network connectivity and needed
-to be investigated in the Guacamole/RDP configuration.
-
-## Final Status
-
-Resolved; Guacamole RDP connection later worked.
-
-## Lesson
-
-Port reachability is a useful layer test but does not by itself prove the
-application session will succeed.
+The original notes don't preserve the exact application-level setting that corrected the problem, so I won't assign a more specific root cause.
 
 ---
 
-# Ticket 14 — Example NOC Escalation Note
+## Ticket 14 — Storage Server SMB Outage After Power Loss
 
-## Incident
+**Type:** Infrastructure incident  
+**Priority:** P3  
+**System:** `storage01` — `192.168.1.208`  
+**Service:** Proxmox backup storage  
+**Status:** Resolved
 
-Proxmox node unavailable from management network.
+### Problem
 
-## Priority
+After a power outage, `storage01` rebooted and its attached Drobo storage returned normally.
 
-P2 — High
+However, Proxmox couldn't reach the CIFS backup target, and Uptime Kuma reported TCP port 445 as unavailable.
 
-## Affected System
+### Investigation
 
-```text
-pve02
-192.168.1.11
-```
+On `storage01`, I confirmed that the storage volume was mounted, the `ProxmoxBackups` SMB share existed, `LanmanServer` was running, and Windows was listening on TCP 445.
 
-## User / Service Impact
-
-One virtualization node unavailable. Cluster workload impact not yet confirmed.
-
-## Checks Completed
-
-- Ping to node failed.
-- Other cluster nodes reachable.
-- Default gateway reachable.
-- `pvecm status` checked from surviving node.
-- Cluster quorum checked.
-- `pvecm nodes` used to inspect membership.
-- Storage state reviewed.
-
-## Current Finding
-
-Issue appears isolated to `pve02`; broader network remains functional.
-
-## Current Cluster State
-
-Record:
-
-```text
-Nodes visible:
-Votes present:
-Quorate:
-Affected guests:
-```
-
-## Recommended Next Action
-
-Check:
-
-- physical power;
-- Ethernet link;
-- switch port;
-- host console;
-- Proxmox boot state;
-- NIC configuration.
-
-## Handoff Quality Standard
-
-The receiving administrator should not need to repeat the basic network and
-cluster-state checks already completed.
-
----
-
-# Ticket 15 — Example SOC Escalation Note
-
-## Incident
-
-Unexpected Active Directory account creation.
-
-## Priority
-
-P2 — High
-
-## Alert
-
-```text
-Event ID: 4720
-Wazuh Rule: 60109
-```
-
-## Affected System
-
-```text
-dc01
-```
-
-## Initial Findings
-
-A new domain account was created outside the expected maintenance window.
-
-## Analyst Checks
-
-- Confirmed Event 4720 on domain controller.
-- Identified creating administrator account.
-- Identified created account.
-- Checked creation timestamp.
-- Checked nearby authentication activity.
-- Checked for additional account-management events.
-- Checked PowerShell/process telemetry where available.
-
-## Escalation Reason
-
-Unauthorized account creation may indicate:
-
-- compromised administrative credentials;
-- persistence;
-- identity abuse;
-- privilege escalation.
-
-## Recommended Next Action
-
-- Disable suspicious account if authorized by procedure.
-- Review privileged group membership.
-- Review creating administrator's logons.
-- Check endpoint/process telemetry.
-- Search for related account events.
-- Preserve evidence and escalate to incident response.
-
----
----
-
-# Ticket 16 — storage01 SMB Failure After Power Outage
-
-## Type
-
-Infrastructure / service availability incident
-
-## Priority
-
-P3 — Medium
-
-## Affected Service
-
-```text
-Proxmox CIFS backup storage: t-20-backup
-SMB server: storage01
-SMB share: ProxmoxBackups
-```
-
-## Affected System
-
-```text
-storage01
-192.168.1.208
-```
-
-## Summary
-
-Following a power outage, `storage01` rebooted and its attached Drobo storage
-returned normally, but Proxmox reported the `t-20-backup` CIFS storage as
-unavailable.
-
-Uptime Kuma independently reported TCP port 445 on `192.168.1.208` as down.
-
-## Initial Observations
-
-Local inspection on `storage01` showed:
-
-- the server retained IP address `192.168.1.208`;
-- the Drobo volume was mounted as `G:`;
-- `G:\ProxmoxBackups` was present;
-- the `ProxmoxBackups` SMB share still existed;
-- the Windows `LanmanServer` service was running;
-- Windows was listening locally on TCP port 445.
-
-These findings suggested that the storage device and SMB service were healthy
-locally and that the failure was more likely in network access or firewall
-policy.
-
-## Network Testing
-
-From `pve01`:
+From `pve01`, I tested network connectivity:
 
 ```bash
 ping -c 3 192.168.1.208
 nc -nvz -w 3 192.168.1.208 445
 ```
 
-The Proxmox host could not reach `storage01`, matching the Uptime Kuma SMB
-availability alert.
+The Proxmox host couldn't reach the SMB service.
 
-## Windows Network Profile Check
-
-On `storage01`:
+I then checked the Windows network profile:
 
 ```powershell
 Get-NetConnectionProfile
 ```
 
-The active Ethernet interface was found in the following state:
+The Ethernet connection had been classified as Public.
 
-```text
-InterfaceAlias   : Ethernet
-NetworkCategory  : Public
-```
+### Root Cause
 
-The trusted home-LAN Ethernet connection should have been classified as
-`Private`.
+The Windows Public-network firewall profile was blocking inbound access to SMB after the reboot.
 
-## Root Cause
+### Resolution
 
-After the power outage and reboot, Windows classified the active Ethernet
-connection as a `Public` network.
+I changed the trusted Ethernet connection back to Private.
 
-Windows Firewall policy for the Public profile blocked inbound SMB access from
-the LAN even though the SMB server service, share, TCP listener, and attached
-storage were functioning normally.
-
-## Corrective Action
-
-The Ethernet network profile was changed back to `Private`:
+The recorded command was:
 
 ```powershell
 Set-NetConnectionProfile -InterfaceIndex 20 -NetworkCategory Private
 ```
 
-## Validation
+The interface index was specific to the server at that time.
 
-After correcting the network profile:
+### Verification
 
-- SMB connectivity to `storage01` was restored;
-- Uptime Kuma no longer reported TCP 445 as unavailable;
-- Proxmox again recognized `t-20-backup`;
-- the Drobo and `ProxmoxBackups` share remained intact;
-- no Proxmox storage definition needed to be deleted or recreated.
+SMB connectivity returned, Uptime Kuma recovered, and Proxmox recognized `t-20-backup` again.
 
-## Operational Lesson
+No storage definition or SMB share needed to be rebuilt.
 
-A storage outage reported by Proxmox does not necessarily indicate a storage
-device or CIFS configuration failure.
+**Result:** Resolved.
 
-Troubleshooting should separate:
+---
 
-```text
-physical storage
-    ↓
-Windows volume
-    ↓
-SMB share
-    ↓
-SMB service/listener
-    ↓
-Windows network/firewall policy
-    ↓
-network reachability
-    ↓
-Proxmox CIFS mount
-```
+## Ticket 15 — Cisco SG350-10 Preparation and Deployment
 
-Checking each dependency prevented unnecessary changes to the Proxmox storage
-configuration.
+**Type:** Planned infrastructure change  
+**Priority:** P4  
+**System:** `sw01` — `192.168.1.21`  
+**Status:** Initial deployment completed; VLAN configuration expanded afterward
 
-## Final Status
+### Objective
 
-Resolved.
+Prepare the Cisco SG350-10 for use as the managed switch in the homelab.
 
-# Ticket 16 — Cisco SG350-10 Baseline and Deployment Preparation
+### Initial Work
 
-## Type
+I assigned a management address, configured the hostname, inspected firmware, checked the original VLAN database, and saved a baseline configuration.
 
-Planned infrastructure change / pre-deployment staging
-
-## Priority
-
-P4 — Planned
-
-## Affected Systems
+The recorded firmware state was:
 
 ```text
-sw01
-Cisco SG350-10
-192.168.1.21/24
+Active:   2.5.9.55
+Inactive: 2.5.0.83
 ```
 
-## Change Objective
-
-Prepare the Cisco SG350-10 as the managed homelab switch without disrupting the
-existing home network or prematurely claiming VLAN segmentation as operational.
-
-## Pre-Change Controls
-
-- Kept the switch isolated from the live LAN until it had a unique management address.
-- Used the hostname `sw01`.
-- Assigned fixed management address `192.168.1.21/24`.
-- Preserved the existing TRENDnet switch as the home-network switching path.
-- Established a rollback path before moving physical lab links.
-
-## Validation Performed
-
-Firmware state was checked from the CLI:
+Useful CLI checks included:
 
 ```text
 show version
-```
-
-Verified images:
-
-```text
-Active:    2.5.9.55
-Inactive:  2.5.0.83
-```
-
-The VLAN database was checked:
-
-```text
 show vlan
 ```
 
-Observed baseline state:
+The original switch configuration used VLAN 1.
 
-```text
-VLAN 1
-Untagged: gi1-10, Po1-8
-```
+### Subsequent Changes
 
-A baseline startup-configuration backup was downloaded before physical
-deployment.
+The switch was later connected to the Proxmox secondary network interfaces, and trunk ports were configured for the lab VLANs.
 
-## Initial Port Convention
+The current documented topology also includes the UniFi US-8 connected through `sw01`.
 
-```text
-Gi1  pve01
-Gi2  pve02
-Gi3  pve03
-Gi4  pve04
-Gi8  upstream / BGW320
-```
+The original staging note is retained as historical evidence. The managed-switch deployment is no longer awaiting physical cutover.
 
-Remaining endpoint ports will be recorded during the physical rebuild rather
-than inferred later.
-
-## Current Status
-
-**Staging complete; physical lab migration pending.**
-
-The switch is ready for a controlled physical deployment, but VLANs, trunking,
-SNMP, syslog, SPAN, OPNsense routing, and inter-VLAN policy are not yet presented
-as operational.
-
-## Rollback Plan
-
-If the initial physical migration causes broad lab connectivity loss:
-
-1. stop additional switch changes;
-2. reconnect affected lab devices to the previously working TRENDnet path;
-3. confirm flat `192.168.1.0/24` connectivity and DNS;
-4. compare the physical cable map with `sw01` port/VLAN state;
-5. correct and retest before resuming the change.
-
-## Documentation / Evidence
-
-- [`04-network-vlans.md`](04-network-vlans.md)
-- [`18-physical-infrastructure.md`](18-physical-infrastructure.md)
-- [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md)
-- [`20-cabling-standard.md`](20-cabling-standard.md)
+[Current switching configuration](04-network-vlans.md)
 
 ---
 
-# Ticket Writing Guidelines
+## Example Escalation Notes
 
-A useful ticket should answer:
+The following two cases are **illustrative handoff examples**, not claims of additional completed incidents.
 
-```text
-What happened?
-What was affected?
-What did I check?
-What did I find?
-What did I change?
-Did it work?
-What remains?
-```
+### Example A — Proxmox Node Unavailable
 
-Avoid entries such as:
+**Priority:** P2  
+**Affected system:** `pve02` (`192.168.1.11`)
 
-```text
-"Restarted server. Fixed."
-```
+Reported problem: Node unreachable from the management network.
 
-A better entry is:
+An appropriate handoff would document host reachability, gateway tests, switch-port state, Proxmox cluster membership, quorum, and affected workloads.
 
-```text
-Wazuh indexer failed to start. systemctl/journal review showed
-AccessDeniedException for /etc/wazuh-indexer/backup. Corrected directory
-permissions, restarted wazuh-indexer, and verified the service active and
-listening on TCP 9200.
-```
+The next administrator should be able to continue from the evidence already collected.
 
-The second note preserves the diagnostic value of the work.
+### Example B — Unexpected Domain Account Creation
+
+**Priority:** P2  
+**System:** `dc01`
+
+A Windows Security Event 4720 appears outside an expected maintenance period.
+
+An appropriate investigation would identify the creating administrator, new account, timestamp, privileged group membership, related logons, and PowerShell or process activity.
+
+If evidence suggested unauthorized account creation, the case would be escalated under the applicable incident-response procedures.
 
 ---
 
-# Common Ticket Fields
-
-A generic operational ticket can use:
+## Ticket Writing Template
 
 ```text
-Ticket Type:
+Ticket ID:
+Type:
 Priority:
 Status:
-Opened:
-Resolved:
+Date / time:
 
-Affected Service:
-Affected Systems:
-User / Business Impact:
+Affected system:
+Affected service:
+Impact:
 
-Summary:
+Reported symptom:
 
-Observed Behavior:
+Initial observations:
 
-Expected Behavior:
-
-Checks Performed:
+Checks performed:
 
 Evidence:
 
-Root Cause:
+Finding / root cause:
 
-Corrective Action:
+Change made:
 
 Validation:
 
-Rollback:
+Rollback (if applicable):
 
-Follow-Up:
+Follow-up:
 
-Final Resolution:
+Final status:
 ```
 
----
+I want each ticket to leave enough information for someone else to understand what happened without reproducing the entire investigation.
 
-# Status Vocabulary
-
-Useful status values include:
-
-| Status | Meaning |
-|---|---|
-| Open | Work has not started |
-| Investigating | Evidence collection / diagnosis in progress |
-| Monitoring | Change made; watching for recurrence |
-| Pending | Waiting on dependency, approval, hardware, vendor, or user |
-| Resolved | Service restored / problem corrected |
-| Closed | Work complete and documented |
-| Planned | Approved or intended change not yet started |
+Where the root cause is unknown, I record that explicitly rather than inventing a resolution.
 
 ---
 
-# Priority Vocabulary
+## Result
 
-| Priority | Typical Meaning |
-|---|---|
-| P1 | Critical / broad outage / severe security impact |
-| P2 | High / important service or security risk |
-| P3 | Medium / limited service impact |
-| P4 | Low / noncritical issue or planned operational work |
-| P5 | Lab test / informational |
+The ticket examples cover several kinds of work I've carried out: infrastructure changes, Linux service failures, storage outages, Windows administration, network troubleshooting, and security detection exercises.
 
----
+The most useful entries are those where I can show a complete sequence from symptom to investigation, corrective action, and successful validation.
 
-# Skills Demonstrated
+The tickets complement the longer technical documents rather than replace them.
 
-These ticket examples demonstrate:
+## Related Documentation
 
-## SOC
-
-- Alert documentation
-- Source-event validation
-- Security-event classification
-- MITRE ATT&CK context
-- Identity-event investigation
-- Detection verification
-- Escalation notes
-
-## NOC
-
-- Incident documentation
-- Service-impact assessment
-- DNS troubleshooting
-- Cluster validation
-- Storage validation
-- Service restoration
-- Operational handoff
-- Managed-switch deployment preparation
-- Physical-layer rollback planning
-
-## Systems Administration
-
-- Linux service troubleshooting
-- LVM/storage diagnosis
-- Proxmox administration
-- Active Directory administration
-- Windows event-log investigation
-- Backup validation
-
-## Professional Operations
-
-- Clear technical writing
-- Root-cause documentation
-- Change control
-- Validation
-- Rollback thinking
-- Escalation readiness
-- Evidence preservation
-
----
-
-# Related Repository Documentation
-
-| Topic | Document |
-|---|---|
-| Backup / recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Asset inventory | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| Pi-hole migration | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Cisco managed switching | [`04-network-vlans.md`](04-network-vlans.md) |
-| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
-| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
-| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
-| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Wazuh deployment | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Attack / detection labs | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| SOC/NOC skills matrix | [`11-soc-noc-skills-matrix.md`](11-soc-noc-skills-matrix.md) |
-| SOC triage playbook | [`12-soc-alert-triage-playbook.md`](12-soc-alert-triage-playbook.md) |
-| NOC troubleshooting runbook | [`13-noc-troubleshooting-runbook.md`](13-noc-troubleshooting-runbook.md) |
-
----
-
-# Summary
-
-The technical work in a SOC or NOC is only part of the job.
-
-A useful operator must also be able to leave behind a clear record of:
-
-```text
-symptom
-  ↓
-evidence
-  ↓
-diagnosis
-  ↓
-action
-  ↓
-validation
-  ↓
-handoff / closure
-```
-
-These examples demonstrate how the homelab work can be translated into concise,
-operations-style ticket documentation.
+- [Wazuh SIEM Deployment](06-wazuh-siem.md)
+- [Detection Labs](09-attack-detection-labs.md)
+- [Active Directory Lab](10-active-directory-lab.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [Backup and Restore Validation](21-proxmox-backup-restore-validation.md)
