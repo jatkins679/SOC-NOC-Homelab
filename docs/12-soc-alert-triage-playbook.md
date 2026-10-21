@@ -1,761 +1,463 @@
 # SOC Alert Triage and Investigation Playbook
 
-## Purpose
+## Overview
 
-This playbook documents the investigation workflow I use in the SOC/NOC homelab
-when a security alert appears in Wazuh or another monitoring source.
+This is the process I use to investigate security alerts generated in my homelab.
 
-The goal is not to create a fictional enterprise incident-response program. It is
-to demonstrate a repeatable analyst process for answering:
+Most of the examples come from controlled Wazuh exercises, where I already know what activity was generated. That gives me an opportunity to check whether the SIEM accurately represents what happened on the endpoint.
 
-1. What happened?
-2. Is the alert real?
-3. Which system and user are involved?
-4. How serious is it?
-5. Is the activity expected?
-6. Did anything else happen around the same time?
-7. What action should be taken?
-8. How do I prove the issue is resolved?
+The process is intended to be useful beyond those exercises. When an alert appears, I want to identify the affected systems, confirm the underlying activity, determine its significance, and document what I found.
 
-The process is intentionally evidence-driven.
+I don't want to assume an alert is malicious simply because Wazuh assigned it a high rule level.
+
+I also don't want to assume a firewall pass log, successful ping, or functioning agent proves that the entire system is working correctly.
+
+The evidence needs to support the conclusion.
 
 ---
 
-# 1. Triage Workflow
+## 1. Initial Triage
+
+When an alert first appears, I record the basic details.
+
+| Field | What I'm looking for |
+|---|---|
+| Timestamp | When the activity occurred |
+| Rule or event ID | What triggered the alert |
+| Severity | Wazuh level and initial priority |
+| Host | Which endpoint generated the event |
+| User | Account associated with the activity |
+| Source | Originating IP or system |
+| Destination | Target system or service |
+| Process or command | What actually executed |
+| Event count | Single occurrence or repeated activity |
+
+My first objective is to understand what the alert is claiming.
+
+I then look for the event in the original logs.
+
+### Investigation Sequence
 
 ```text
 Alert received
-      |
-      v
-Identify rule / event / severity
-      |
-      v
-Identify host, user, source, destination
-      |
-      v
-Check source telemetry
-      |
-      v
-Validate whether activity actually occurred
-      |
-      v
-Determine expected vs suspicious
-      |
-      v
-Scope related activity
-      |
-      v
-Assign severity / priority
-      |
-      v
-Contain or remediate if needed
-      |
-      v
-Verify normal state
-      |
-      v
+       |
+       v
+Identify event and affected systems
+       |
+       v
+Verify the original source log
+       |
+       v
+Determine whether activity is expected
+       |
+       v
+Search for related events
+       |
+       v
+Assess impact and priority
+       |
+       v
+Take action if required
+       |
+       v
+Verify the result
+       |
+       v
 Document findings
 ```
 
-The most important rule is:
-
-> Do not treat the SIEM alert as the only source of truth.
-
-Whenever possible, I validate the alert against the original endpoint,
-application, authentication, or operating-system log.
+I try not to make changes until I understand enough of the situation to know what I'm changing and why.
 
 ---
 
-# 2. Initial Triage Questions
+## 2. Checking the Source Logs
 
-When reviewing a new alert, I begin with:
+The original endpoint or application log is often the best place to verify what the SIEM reported.
 
-- What is the alert title or rule description?
-- What rule ID or event ID triggered?
-- What severity or level was assigned?
-- Which host generated the event?
-- Which user or account was involved?
-- What source IP initiated the activity?
-- What destination system or service was affected?
-- What process or command was involved?
-- When did the activity occur?
-- Is the event isolated or repeated?
-- Is the activity expected in the context of the lab?
+### SSH Authentication
 
-These questions establish the minimum context needed before deciding whether the
-alert is important.
-
----
-
-# 3. Validate the Source Event
-
-## Linux Authentication
-
-For SSH-related alerts, check the system journal or authentication logs.
-
-Examples:
+On a Linux endpoint:
 
 ```bash
-sudo journalctl -u ssh
+sudo journalctl -u ssh --no-pager
 ```
 
-or:
+To narrow the results to a known source:
 
 ```bash
-sudo grep -i "failed" /var/log/auth.log
+sudo journalctl -u ssh --no-pager | grep '10.10.50.113'
 ```
 
-Questions:
+I compare the timestamps, usernames, source addresses, and failed-login counts.
 
-- Does the source log show the same timestamp?
-- Is the username the same as the Wazuh alert?
-- Is the source IP consistent?
-- How many failed attempts occurred?
-- Was there a successful login afterward?
+I also check whether successful authentication occurred after the failures.
 
----
-
-## Apache / Web Logs
-
-For web alerts:
+### Apache Access Logs
 
 ```bash
 sudo tail -n 100 /var/log/apache2/access.log
 ```
 
-or:
+For the SQL-injection-style test:
 
 ```bash
 sudo grep -n "SELECT" /var/log/apache2/access.log
 ```
 
-Questions:
+I look at the requested path, source IP, HTTP method, response code, and nearby requests.
 
-- Is the suspicious request actually present?
-- Which source IP sent it?
-- Which URI was requested?
-- What HTTP status code was returned?
-- Was the request repeated?
-- Were other suspicious requests sent nearby in time?
+A suspicious request does not automatically mean the application was compromised.
 
----
+### File Integrity Monitoring
 
-## File Integrity Monitoring
-
-For FIM alerts:
-
-- Confirm the file path.
-- Confirm the action: create, modify, delete.
-- Compare hashes if available.
-- Review captured file-content differences.
-- Confirm whether the file change was expected.
-
-Useful endpoint commands include:
+For an unexpected file change, I check the path, modification time, and current file contents when the file is still available.
 
 ```bash
 stat /path/to/file
 sha256sum /path/to/file
 ```
 
----
+I compare those results with the Wazuh FIM event, including its recorded hashes and content differences.
 
-## Linux Auditd
+The current file hash may have changed again since the alert, so timestamps and event history also matter.
 
-For Auditd-related alerts:
+### Linux Auditd
 
 ```bash
 sudo ausearch -ts recent
 ```
 
-or for a specific executable or user:
+To look for a specific executable:
 
 ```bash
 sudo ausearch -x sudo
 ```
 
-Questions:
+I pay particular attention to AUID, UID, and EUID.
 
-- Which user executed the command?
-- What UID, EUID, and AUID were recorded?
-- Was the command run through `sudo`?
-- What executable was launched?
-- Was the action expected?
+Those fields can distinguish the original login identity from the privileges used to execute a command.
 
----
+### Windows Security Events
 
-## Windows Security Events
-
-For Windows events:
+From an administrative PowerShell session:
 
 ```powershell
 Get-WinEvent -LogName Security -MaxEvents 50
 ```
 
-For a specific event:
+For account creation:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{
     LogName = 'Security'
-    Id      = 4720
+    Id = 4720
 } -MaxEvents 20
 ```
 
-Questions:
+I look for the account that performed the action, the affected account, the time, and any related authentication activity.
 
-- Which account performed the action?
-- Which account was affected?
-- What system generated the event?
-- Was the change expected?
-- Was there related login, process, or PowerShell activity?
+For PowerShell or process events, I also examine the appropriate Operational event channels.
 
 ---
 
-# 4. Determine Whether the Alert Is a True Positive
+## 3. Classifying the Alert
 
-An alert is not automatically malicious.
+An alert can accurately identify an event without the event being malicious.
 
-I classify the alert into one of these categories:
+I use four basic classifications.
 
 | Classification | Meaning |
 |---|---|
-| **True Positive — Malicious / Suspicious** | Alert accurately represents activity that requires investigation or action |
-| **True Positive — Expected** | Alert accurately detected activity, but the action was authorized or part of testing |
-| **False Positive** | Alert logic matched something benign that does not represent the intended behavior |
-| **Needs More Context** | Insufficient evidence to classify confidently |
+| True positive — suspicious | The intended behavior was detected and warrants investigation |
+| True positive — expected | The intended behavior occurred, but it was authorized or part of testing |
+| False positive | The alert incorrectly identifies behavior as matching its intended detection |
+| Needs more information | There isn't enough evidence to classify the event confidently |
 
-In the homelab, most controlled exercises are:
+Most of my controlled Wazuh exercises are **true positives involving expected activity**.
 
-```text
-True Positive — Expected
-```
+For example, an SSH brute-force alert may accurately describe repeated failed authentication attempts, even when I deliberately generated them from Kali Linux.
 
-because the activity was deliberately generated to validate monitoring.
-
-The analytical value comes from proving that the alert accurately reflects the
-underlying event.
+I want to keep detection accuracy and malicious intent as separate questions.
 
 ---
 
-# 5. Scope the Activity
+## 4. Scoping Related Activity
 
-After confirming the event occurred, determine whether it was isolated.
+After confirming the alert, I check whether the event was isolated.
 
-## Search by Host
+I normally start with a short window around the original timestamp, such as 15 minutes before and after the event.
 
-Look for other events from the same system around the same time.
+Depending on what I find, I expand the search.
 
-Examples:
+I look for relationships involving:
 
-- authentication failures
-- process creation
-- PowerShell activity
-- account changes
-- file modifications
-- service changes
-- network connections
+- The same host
+- The same user or account
+- The same source IP
+- The same process or parent process
+- Similar commands or file changes
+- Additional authentication activity
+- Events on other systems
 
-## Search by User
+For an SSH alert, I would look for successful logins after the failures.
 
-Determine whether the same user or account appears in:
+For an Active Directory account-creation alert, I would look for group-membership changes, privileged logons, or subsequent activity by the new account.
 
-- logon events
-- privileged commands
-- account administration
-- PowerShell execution
-- process creation
-- authentication failures
-
-## Search by Source IP
-
-Determine whether the source system generated:
-
-- additional authentication attempts
-- scans
-- web requests
-- connections to other targets
-
-## Search by Time Window
-
-A practical investigation window is:
-
-```text
-5–15 minutes before the event
-through
-5–15 minutes after the event
-```
-
-Expand the window if related events are found.
+The objective is to determine whether the alert represents an isolated event or part of a larger sequence.
 
 ---
 
-# 6. Severity and Priority
+## 5. Assigning Priority
 
-Severity should reflect both the technical event and the environment.
+A Wazuh rule level provides useful information, but priority also depends on the affected system, the behavior, and the evidence.
 
-I use the following simple lab prioritization model:
+For the homelab, I use a simple model.
 
 | Priority | Example |
 |---|---|
-| **P1 — Critical** | Confirmed compromise, destructive activity, privileged persistence, widespread impact |
-| **P2 — High** | Suspicious privileged account creation, repeated successful unauthorized access, serious endpoint activity |
-| **P3 — Medium** | Repeated failed authentication, suspicious process, web attack attempt, unexpected file change |
-| **P4 — Low** | Informational event, isolated benign activity, expected administrative change |
-| **P5 — Testing / Informational** | Controlled lab event generated intentionally |
+| P1 — Critical | Confirmed destructive activity or serious compromise affecting important systems |
+| P2 — High | Suspected unauthorized privileged access or persistence |
+| P3 — Medium | Repeated authentication failures, suspicious commands, or unexpected file changes |
+| P4 — Low | Minor event requiring review, with no apparent impact |
+| P5 — Testing | Known controlled activity generated for a lab exercise |
 
-A Wazuh rule level is useful context, but it is not the only factor in priority.
+These are local working priorities, not a production SOC's official incident-severity standard.
 
----
-
-# 7. Investigation Example — SSH Brute Force
-
-## Alert
-
-```text
-Wazuh Rule: 5712
-Level: 10
-MITRE ATT&CK: T1110 - Brute Force
-```
-
-## Triage
-
-Questions:
-
-- Which endpoint reported the event?
-- What source IP generated the attempts?
-- Which username was targeted?
-- How many failed attempts occurred?
-- Was any authentication successful?
-
-## Validation
-
-Check the SSH journal on `target01`:
-
-```bash
-sudo journalctl -u ssh
-```
-
-Compare:
-
-- timestamp
-- source IP
-- username
-- failure count
-
-## Classification
-
-For the controlled exercise:
-
-```text
-True Positive — Expected
-```
-
-because the activity was intentionally generated from `kali01`.
-
-## Analyst Conclusion
-
-Wazuh successfully detected repeated SSH authentication failures and the
-underlying endpoint logs independently confirmed the event.
+A controlled test might produce a Wazuh Level 10 alert but still receive P5 for operational handling because I generated the activity intentionally.
 
 ---
 
-# 8. Investigation Example — File Integrity Change
+## 6. Investigation Example: SSH Brute Force
 
-## Alert
+In one exercise, I generated eight failed SSH authentication attempts from `kali01` (`10.10.50.113`) against `target01` (`10.10.60.10`).
 
-```text
-Wazuh Rule: 550
-Level: 7
-MITRE ATT&CK: T1565.001 - Stored Data Manipulation
-```
+Wazuh produced:
 
-## Triage
+| Field | Result |
+|---|---|
+| Rule | `5712` |
+| Level | 10 |
+| Technique | `T1110` — Brute Force |
+| Targeted account | `baduser` |
+| Correlated failures | 8 |
 
-Identify:
+I checked the SSH journal on `target01` and verified the source IP and failed authentication records.
 
-- monitored file
-- modification timestamp
-- before/after hashes
-- content difference
-- agent reporting the event
+The alert accurately reflected the test.
 
-## Validation
+**Assessment:** True positive — expected.
 
-Confirm that the file was modified during the test.
+The same alert outside a known test would require additional investigation, particularly whether the source attempted other usernames or subsequently authenticated successfully.
 
-Review:
-
-- file metadata
-- current hash
-- Wazuh `syscheck.diff`
-- recorded before/after values
-
-## Classification
-
-```text
-True Positive — Expected
-```
-
-## Analyst Conclusion
-
-The SIEM captured both the integrity change and useful forensic context,
-including hashes and file-content differences.
+[Full SSH detection exercise](09-attack-detection-labs.md)
 
 ---
 
-# 9. Investigation Example — SQL-Injection-Style Request
+## 7. Investigation Example: File Integrity Change
 
-## Alert
+I configured Wazuh to monitor `/opt/wazuh-lab` on `target01`.
 
-```text
-Wazuh Rule: 31103
-Level: 7
-MITRE ATT&CK: T1190
-```
+After changing a test configuration file, Wazuh generated:
 
-## Triage
+| Field | Result |
+|---|---|
+| Rule | `550` |
+| Level | 7 |
+| Event | File modified |
+| Technique | `T1565.001` |
 
-Identify:
+The alert included before-and-after hashes and the added text.
 
-- source IP
-- destination
-- URI
-- HTTP method
-- status code
-- repetition
+I compared those details with the actual modification performed during the test.
 
-## Validation
+**Assessment:** True positive — expected.
 
-Check:
+In an unexpected case, I'd also check who changed the file, whether the modification was authorized, and whether it affected a service or security control.
 
-```bash
-grep -n "SELECT" /var/log/apache2/access.log
-```
-
-Compare the Wazuh alert to the Apache source log.
-
-## Important Interpretation
-
-An alert for SQL-injection-style syntax does not prove that exploitation
-succeeded.
-
-In the lab exercise, Apache returned:
-
-```text
-HTTP 404
-```
-
-because the requested application path did not exist.
-
-The correct conclusion is:
-
-> Suspicious request detected; successful exploitation not demonstrated.
-
-This distinction is important in SOC analysis.
+[Full FIM exercise](09-attack-detection-labs.md)
 
 ---
 
-# 10. Investigation Example — Active Directory Account Creation
+## 8. Investigation Example: Suspicious Web Request
 
-## Alert
+I sent an HTTP request containing SQL-like syntax from `kali01` to Apache on `target01`.
 
-```text
-Windows Event ID: 4720
-Wazuh Rule:       60109
-Level:            8
-MITRE ATT&CK:     T1098 - Account Manipulation
-```
+Wazuh reported:
 
-## Triage Questions
+| Field | Result |
+|---|---|
+| Rule | `31103` |
+| Level | 7 |
+| Technique | `T1190` |
+| HTTP response | 404 |
 
-- Who created the account?
-- What account was created?
-- When was it created?
-- Was the administrator expected to perform the action?
-- Was the account added to privileged groups?
-- Did the account log on?
-- Were other accounts modified around the same time?
+I verified the request in the Apache access log.
 
-## Validate on the Domain Controller
+The requested application path didn't exist.
 
-```powershell
-Get-WinEvent -FilterHashtable @{
-    LogName = 'Security'
-    Id      = 4720
-} -MaxEvents 20
-```
+**Assessment:** True positive — expected; suspicious request detected, successful exploitation not demonstrated.
 
-Inspect the account:
+This distinction is important. An alert indicating an SQL-injection attempt doesn't prove that a database was accessed or modified.
 
-```powershell
-Get-ADUser soc-lab-user -Properties *
-```
-
-## Scope Related Events
-
-Look for:
-
-```text
-4720 — user created
-4725 — user disabled
-4726 — user deleted
-```
-
-Also review nearby:
-
-- logon activity
-- PowerShell execution
-- process creation
-- group-membership changes
-
-## Classification
-
-For the controlled lab:
-
-```text
-True Positive — Expected
-```
-
-## Analyst Conclusion
-
-The administrative action was recorded by Windows Security logging, collected
-by Wazuh, correlated to rule `60109`, and mapped to an identity-related ATT&CK
-technique.
+[Full web detection exercise](09-attack-detection-labs.md)
 
 ---
 
-# 11. Containment and Remediation Decision
+## 9. Investigation Example: Active Directory Account Creation
 
-Containment should follow evidence.
+I created the test domain account `soc-lab-user` on `dc01` (`10.10.20.10`).
 
-Possible actions include:
+Windows recorded Security Event ID `4720`.
 
-## Account Activity
+Wazuh generated:
 
-- Disable the affected account.
-- Reset credentials.
-- Review group memberships.
-- Revoke sessions where appropriate.
-- Investigate related authentication.
+| Field | Result |
+|---|---|
+| Windows event | `4720` |
+| Wazuh rule | `60109` |
+| Level | 8 |
+| Technique | `T1098` — Account Manipulation |
 
-## Endpoint Activity
+I checked the Windows Security event and the corresponding Wazuh alert.
 
-- Isolate the endpoint.
-- Stop a malicious process.
-- Disable a service.
-- Remove persistence.
-- Restore modified configuration.
+**Assessment:** True positive — expected.
 
-## Network Activity
+For an unexpected account, I would determine who created it, whether it had privileged memberships, and whether it had been used to authenticate.
 
-- Block a source IP.
-- Restrict a port or service.
-- Apply firewall policy.
-- Segment the affected system.
-
-In the homelab, containment actions are performed only when they support the
-exercise and can be safely reversed.
+[Active Directory investigation](10-active-directory-lab.md)
 
 ---
 
-# 12. Verification After Remediation
+## 10. Containment and Remediation
 
-A remediation is not complete until the environment is rechecked.
+Actions should depend on the evidence and the impact.
 
-Verification may include:
+Examples include disabling a compromised account, restricting a network connection, stopping a malicious process, or restoring a modified configuration file.
 
-- Confirm account disabled or removed.
-- Confirm service state.
-- Confirm file restored.
-- Confirm process no longer running.
-- Confirm suspicious connections stopped.
-- Confirm endpoint still reports telemetry.
-- Confirm Wazuh agent is active.
-- Confirm normal application functionality.
-- Confirm no related alerts continue unexpectedly.
+In the lab, I generally prefer controlled and reversible actions that let me verify the effect of the change.
 
-Example Linux service check:
+I don't want to disable a service or modify firewall rules simply because an alert was generated.
+
+Before taking action, I want to know which system is affected and whether the action might interrupt other services.
+
+---
+
+## 11. Verifying the Result
+
+After remediation, I check whether the original problem was resolved and whether the system still performs its intended function.
+
+For example, after investigating a Wazuh agent issue:
 
 ```bash
 systemctl is-active wazuh-agent
 ```
 
-Example AD check:
+I would also verify that new telemetry appears in Wazuh.
+
+A running service alone isn't sufficient evidence that the complete monitoring path works.
+
+For an account issue, I can inspect the account state:
 
 ```powershell
 Get-ADUser soc-lab-user |
 Select-Object Name, SamAccountName, Enabled
 ```
 
+For a file change, I check the restored file and its contents or hashes.
+
+The goal is to validate the outcome, not simply confirm that a remediation command completed.
+
 ---
 
-# 13. Investigation Notes Template
+## 12. Investigation Notes Template
 
-Use the following format for future labs:
+I use the following structure when documenting security investigations.
 
 ```text
-Alert:
-Rule / Event ID:
-Severity:
-MITRE ATT&CK:
-Timestamp:
+Alert / Rule:
+Event ID:
+Time:
+Severity / Priority:
 
-Affected Host:
-Affected User:
-Source IP:
+Affected host:
+User or account:
+Source:
 Destination:
-Process / Command:
+Process / command:
 
-Initial Observation:
+Initial observation:
 
-Source-Log Validation:
+Source-log evidence:
 
-Related Events:
+Related events:
 
 Classification:
-[ ] True Positive — Suspicious
-[ ] True Positive — Expected
-[ ] False Positive
-[ ] Needs More Context
+[ ] True positive — suspicious
+[ ] True positive — expected
+[ ] False positive
+[ ] Needs more information
 
 Impact:
 
-Containment / Remediation:
+Action taken:
 
-Verification:
+Post-action verification:
 
-Final Assessment:
+Final assessment:
 
-Evidence:
+Evidence references:
 ```
 
----
+The notes should make it possible for someone else to understand what happened and how I reached the conclusion.
 
-# 14. Escalation Criteria
-
-In a real SOC environment, I would escalate when:
-
-- privileged account compromise is suspected;
-- successful unauthorized access is confirmed;
-- multiple systems appear affected;
-- malware or persistence is suspected;
-- data access or exfiltration may have occurred;
-- destructive activity is observed;
-- investigation requires permissions beyond analyst scope;
-- the event affects a critical production system;
-- evidence is incomplete but risk is high.
-
-The purpose of escalation is not to abandon the investigation. It is to provide
-the next analyst or responder with the evidence already collected.
+For a live incident, I would also record escalation and handoff details as appropriate.
 
 ---
 
-# 15. Evidence Preservation
+## 13. Escalation
 
-Useful evidence includes:
+In a real SOC, escalation depends on the organization's procedures and the analyst's authority.
 
-- SIEM alert details
-- source log excerpts
-- timestamps
-- hostnames
-- usernames
-- source/destination IPs
-- process paths
-- command lines
-- event IDs
-- rule IDs
-- file hashes
-- screenshots
-- configuration snippets
-- remediation commands
-- post-remediation validation
+Events that would generally warrant escalation include confirmed unauthorized privileged access, evidence of malware or persistence, activity affecting multiple systems, suspected data theft, or destructive behavior.
 
-Sensitive values such as passwords, tokens, and private credentials should not
-be stored in the public repository.
+An investigation may also need escalation when the evidence is incomplete but the potential impact is significant.
+
+A useful handoff should include the original alert, affected systems, relevant timestamps, supporting logs, preliminary assessment, and actions already taken.
 
 ---
 
-# 16. Skills Demonstrated
+## 14. Evidence Handling
 
-This playbook reflects practical experience with:
+For lab investigations, I retain useful technical evidence such as:
 
-## Security Operations
+- Wazuh rule and event details
+- Original endpoint or application log entries
+- Timestamps and hostnames
+- Usernames and relevant process information
+- Source and destination addresses
+- File hashes
+- Configuration snippets
+- Screenshots
+- Verification commands and results
 
-- Alert triage
-- Event validation
-- True-positive / false-positive classification
-- Severity assessment
-- Event correlation
-- Threat hunting
-- MITRE ATT&CK interpretation
-- Endpoint log validation
-- Investigation scoping
-- Containment decision-making
-- Remediation verification
+I exclude passwords, credentials, and other sensitive information from the public repository.
 
-## Windows / Identity
-
-- Windows Security Event analysis
-- Active Directory account events
-- PowerShell event queries
-- User lifecycle investigation
-- Identity-security monitoring
-
-## Linux
-
-- SSH authentication logs
-- systemd journal analysis
-- Apache access logs
-- Auditd
-- File Integrity Monitoring
-- process and service validation
-
-## Analyst Operations
-
-- Evidence collection
-- Root-cause analysis
-- Clear investigation notes
-- Escalation readiness
-- Post-remediation validation
-- Technical documentation
+Where a command or result wasn't preserved during the original exercise, I distinguish a later diagnostic example from historical evidence.
 
 ---
 
-# 17. Related Repository Evidence
+## Result
 
-| Investigation Area | Documentation |
-|---|---|
-| Wazuh deployment | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Attack / detection labs | [`09-attack-detection-labs.md`](09-attack-detection-labs.md) |
-| Active Directory monitoring | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| Skills / evidence matrix | [`11-soc-noc-skills-matrix.md`](11-soc-noc-skills-matrix.md) |
-| Detection screenshots | [`../evidence/wazuh/`](../evidence/wazuh/) |
+This playbook reflects the approach I've developed through the Wazuh detection labs and related systems troubleshooting.
 
----
+The recurring process is straightforward: identify the alert, verify the event at its source, understand the context, investigate related activity, determine whether action is necessary, and check the result.
 
-# 18. Summary
+I expect the playbook to change as I add new detection exercises and gain more experience with security monitoring.
 
-The analyst workflow used throughout the lab is:
+## Related Documentation
 
-```text
-Alert
-  ↓
-Validate
-  ↓
-Correlate
-  ↓
-Classify
-  ↓
-Scope
-  ↓
-Prioritize
-  ↓
-Contain / remediate
-  ↓
-Verify
-  ↓
-Document
-```
-
-The objective is to make each investigation reproducible and defensible rather
-than relying only on the fact that a SIEM generated an alert.
+- [Wazuh SIEM Deployment](06-wazuh-siem.md)
+- [Windows Endpoint Telemetry](08-windows-telemetry.md)
+- [Wazuh Attack Detection Labs](09-attack-detection-labs.md)
+- [Active Directory Lab](10-active-directory-lab.md)
+- [SOC/NOC Skills Matrix](11-soc-noc-skills-matrix.md)
