@@ -113,12 +113,14 @@ Secure auth:      on
 The cluster currently uses local node storage for VM/LXC disks and shared remote
 backup storage rather than Ceph.
 
-## Current Proxmox Workload Placement
+## Recorded Proxmox Workload Placement
 
 The following placement was verified after the fourth node was added and the
-selected workloads were migrated:
+selected workloads were migrated. It is a historical snapshot rather than a
+verified current placement. Consult the live Proxmox cluster before updating
+automation or performing maintenance based on these assignments:
 
-| Node | Current workloads |
+| Node | Recorded workloads |
 |---|---|
 | `pve01` | `dc01`, `win11-01`, `sqlserver2025`, `apache-guacamole`, `pialert` |
 | `pve02` | `kali01`, `target01`, `docker` |
@@ -319,7 +321,7 @@ The canonical UPS identifiers are:
 | Asset | Description | Planned / Current Use |
 |---|---|---|
 | `UPS01` | Older of the two large UPS units | Large-load power domain; exact attached devices are recorded after load/runtime validation |
-| `UPS02` | Newer of the two large UPS units; APC Smart-UPS C1000 (`SMC1000`) | Large-load power domain; includes the recently added large UPS; exact attached devices are recorded after load/runtime validation |
+| `UPS02` | Newer of the two large UPS units; APC Smart-UPS 1000 (`SUA1000`) | Large-load power domain; includes the recently added large UPS; exact attached devices are recorded after load/runtime validation |
 | `UPS03` | Small UPS / surge protector; APC Back-UPS 850 (`BE850G2`) | Lightweight/network/support-device power domain as appropriate |
 
 These identifiers supersede the earlier convention in which the small UPS could
