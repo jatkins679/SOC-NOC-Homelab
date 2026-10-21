@@ -1,40 +1,49 @@
 # Proxmox Fourth-Node Expansion and Workload Rebalancing
 
-> Historical change record: addresses and planned-state statements are retained as evidence of the environment at the time. Use the asset inventory for current values.
+## Overview
 
-## Objective
+In August 2026, I expanded the Proxmox cluster from three nodes to four by adding a repurposed Dell Precision 5550 laptop.
 
-This change expanded the `homelab` Proxmox VE cluster from three nodes to four
-by repurposing a Dell Precision 5550 as `pve04`. The work also standardized
-Proxmox versions, validated quorum, rebalanced selected workloads, and reviewed
-automatic-start behavior for essential services.
+The original three nodes were small-form-factor systems with relatively limited memory and storage. The Precision gave me another 32 GB of RAM and a more capable processor, which was useful as I added additional security and infrastructure services.
 
-The change was performed without adding Ceph or claiming automatic high
-availability. VM disks remain on local node storage, with recovery protection
-provided by backups on the shared `t-20-backup` CIFS target.
+The expansion involved more than installing Proxmox.
 
-## Added Host
+I also standardized the software versions across the cluster, checked hostname resolution, validated quorum, migrated selected virtual machines, and reviewed which services should start automatically.
 
-| Item | Verified value |
+This is a historical record of the expansion work. Some VM placements and network addresses have changed since then.
+
+---
+
+## 1. Added Hardware
+
+The fourth cluster node is `pve04`.
+
+| Component | Configuration |
 |---|---|
-| Hostname | `pve04` |
 | Hardware | Dell Precision 5550 |
-| CPU | Intel Core i7-10850H; 6 cores / 12 threads |
+| Processor | Intel Core i7-10850H |
+| CPU | 6 cores / 12 threads |
 | Memory | 32 GiB |
-| Storage | 256 GB Samsung NVMe |
-| Management address | `192.168.1.13/24` |
+| Storage | 256 GB Samsung NVMe SSD |
+| Management IP | `192.168.1.13/24` |
 | Default gateway | `192.168.1.254` |
-| Ethernet | Realtek RTL8153B USB Gigabit adapter; Linux `r8152` driver |
-| Proxmox bridge | `vmbr0` |
+| Network adapter | Realtek RTL8153B USB Gigabit Ethernet |
+| Linux driver | `r8152` |
+| Management bridge | `vmbr0` |
 
-The Precision 5550 has no built-in RJ45 Ethernet port. Its current Proxmox
-management connection therefore uses a USB Ethernet adapter. A second adapter
-is reserved for a later managed-switch and segmented-network phase.
+The laptop doesn't have a built-in RJ45 Ethernet port.
 
-## Host Preparation
+I therefore used a USB Gigabit Ethernet adapter for its original management connection.
 
-After installing Proxmox VE, the host identity, network, CPU, memory, storage,
-and USB Ethernet driver were checked:
+A second network connection was subsequently added for the managed-switch and VLAN infrastructure.
+
+---
+
+## 2. Preparing the Host
+
+After installing Proxmox VE, I checked the hardware and operating-system configuration.
+
+The original validation commands included:
 
 ```bash
 hostnamectl
@@ -50,34 +59,48 @@ ethtool -i nic0
 pvesm status
 ```
 
-The host reported 12 logical CPUs, approximately 31 GiB of usable memory, and
-an RTL8153 adapter using the `r8152` driver.
+The hardware checks confirmed the expected CPU, memory, NVMe storage, and USB network adapter.
 
-## Repository and Version Standardization
+The Ethernet adapter was recognized by Linux using the `r8152` driver.
 
-The subscription-only enterprise sources returned HTTP 401 responses because
-this lab does not use a Proxmox subscription. They were disabled, and the
-Proxmox VE no-subscription repository for Debian Trixie was enabled:
+Before proceeding, I also checked that the host could reach the management network and shared Proxmox backup storage.
+
+---
+
+## 3. Repository Configuration and Updates
+
+During preparation, the Proxmox enterprise package repositories returned HTTP 401 errors because the lab doesn't have a Proxmox enterprise subscription.
+
+I disabled the subscription-only sources and enabled the no-subscription repository for Debian Trixie.
+
+The repository entry was:
 
 ```text
 http://download.proxmox.com/debian/pve trixie pve-no-subscription
 ```
 
-Each cluster node was updated and rebooted individually. The verified target
-state was:
+I then updated the cluster nodes individually.
+
+The documented common software state after the update was:
 
 ```text
 pve-manager/9.2.10
 Linux kernel 7.0.14-12-pve
 ```
 
-Rolling one node at a time kept a majority of cluster votes online during the
-maintenance window.
+I avoided rebooting all of the existing nodes at once.
 
-## Name Resolution
+Updating one node at a time helped preserve cluster quorum during maintenance.
 
-Before `pve04` joined, the following host mappings were made consistent on all
-nodes:
+These are the versions recorded during the August expansion, not a statement that the cluster is still running those exact versions.
+
+---
+
+## 4. Hostname Resolution
+
+Before adding `pve04`, I checked hostname resolution across the cluster.
+
+The documented mappings were:
 
 ```text
 192.168.1.10 pve01.home.arpa pve01
@@ -86,18 +109,24 @@ nodes:
 192.168.1.13 pve04.home.arpa pve04
 ```
 
-This provided stable short-name and FQDN resolution for cluster administration.
+Consistent hostname resolution was important for administering the cluster and adding another node.
 
-## Cluster Join and Quorum Validation
+I wanted the new host to be identified correctly before joining it to the existing cluster.
 
-After the fourth node joined, membership was checked with:
+---
+
+## 5. Adding the Fourth Node
+
+After preparing the laptop, I joined it to the `homelab` Proxmox cluster.
+
+I checked the result with:
 
 ```bash
 pvecm status
 pvecm nodes
 ```
 
-The verified result was:
+The recorded cluster state was:
 
 ```text
 Cluster name:     homelab
@@ -111,64 +140,133 @@ Transport:        knet
 Secure auth:      on
 ```
 
-Four voting nodes require three votes for a majority. The cluster can lose one
-node and remain quorate, but losing two nodes removes quorum. This is control-
-plane protection and is not the same as automatic workload failover.
+All four nodes were recognized and the cluster had quorum.
 
-## Workload Rebalancing
+### Quorum Implications
 
-Two selected VMs were shut down and migrated between nodes. Existing backups
-were verified before the moves.
+With four voting nodes, a majority requires three votes.
 
-| VM | ID | Source | Destination | Memory | Disk | Address after validation |
-|---|---:|---|---|---:|---:|---:|
-| `vulnscan01` | 320 | `pve03` | `pve04` | 8 GiB | 80 GiB | `192.168.1.247` |
-| `wazuh01` | 500 | `pve01` | `pve03` | 8 GiB | 100 GiB | `192.168.1.206` |
+The cluster can tolerate one unavailable node and remain quorate.
 
-Validation included VM state, QEMU guest-agent response, and guest interface
-addresses:
+If two nodes become unavailable, the remaining two don't constitute a majority.
+
+This was an important distinction because adding a fourth node increased compute resources without increasing the number of simultaneous voting-node failures the cluster could tolerate.
+
+It also didn't create automatic VM failover.
+
+The virtual machines primarily use local storage, and I haven't configured Ceph or Proxmox HA for automatic workload recovery on other hosts.
+
+---
+
+## 6. Moving Workloads
+
+After joining `pve04`, I moved selected virtual machines to distribute resource usage more effectively.
+
+I verified backups before the migrations.
+
+The documented moves were:
+
+| VM | VMID | From | To | RAM | Disk |
+|---|---:|---|---|---:|---:|
+| `vulnscan01` | 320 | `pve03` | `pve04` | 8 GiB | 80 GiB |
+| `wazuh01` | 500 | `pve01` | `pve03` | 8 GiB | 100 GiB |
+
+The migrations were performed offline.
+
+I shut down the guests, moved them, and validated them on their destination nodes.
+
+### Guest Validation
+
+For `vulnscan01`:
 
 ```bash
 qm status 320
 qm agent 320 ping
 qm guest cmd 320 network-get-interfaces
+```
 
+For `wazuh01`:
+
+```bash
 qm status 500
 qm agent 500 ping
 qm guest cmd 500 network-get-interfaces
 ```
 
-The moves preserved each VM's virtual NIC configuration and IPv4 address.
+The guest-agent checks confirmed that Proxmox could communicate with the operating systems.
 
-## Current Placement
+I also checked the virtual network interfaces and guest IP addresses.
 
-| Node | Current workloads |
+At the time, the validated addresses were:
+
+```text
+vulnscan01  192.168.1.247
+wazuh01     192.168.1.206
+```
+
+These reflect the original flat-network configuration.
+
+`wazuh01` was subsequently assigned `10.10.40.20` on VLAN 40.
+
+### Why Offline Migration
+
+Because the guest disks were on local Proxmox storage, the work required moving the guest disks and configuration rather than performing a shared-storage live migration.
+
+The offline approach was appropriate for these lab workloads.
+
+I could schedule the downtime, confirm the backups, and verify each guest before moving on.
+
+---
+
+## 7. Workload Placement After Expansion
+
+Immediately after the August rebalancing, the documented workload placement was:
+
+| Node | Workloads |
 |---|---|
 | `pve01` | `dc01`, `win11-01`, `docker`, `sqlserver2025`, `apache-guacamole`, `pialert` |
 | `pve02` | `kali01`, `target01` |
 | `pve03` | `wazuh01` |
 | `pve04` | `vulnscan01` |
 
-This is placement for capacity and administrative convenience. It does not imply
-live migration or HA because the virtual disks reside on local storage.
+This table is a historical snapshot.
 
-## Startup Policy
+The cluster has subsequently changed as services were migrated, rebuilt, or added.
 
-Essential services were configured to start automatically in a controlled
-order. Interactive lab and scanning systems remain manual to avoid unnecessary
-resource use and unintended test activity.
+For current placement, I use the Proxmox cluster inventory and updated asset documentation rather than relying on this table.
 
-| Node | Workload | Startup setting |
+---
+
+## 8. Startup Configuration
+
+I also reviewed which virtual machines and containers should start automatically when their Proxmox host boots.
+
+Some services are foundational to the lab and should come up without manual intervention.
+
+Other workloads, such as attack targets and vulnerability scanners, don't need to run continuously.
+
+The recorded startup configuration included:
+
+| Node | Workload | Setting |
 |---|---|---|
 | `pve01` | `dc01` | `onboot=1`, order 1, 60-second delay |
 | `pve01` | `apache-guacamole` | `onboot=1`, order 2, 20-second delay |
 | `pve01` | `pialert` | `onboot=1`, order 3, 20-second delay |
 | `pve03` | `wazuh01` | `onboot=1`, order 1, 120-second delay |
 
-## Laptop Power Behavior
+These values document the configuration at that stage of the project.
 
-To keep `pve04` available with its lid closed, logind lid actions were set to
-ignore and all sleep-related systemd targets were masked:
+I review startup settings as services move between nodes and the power-recovery process evolves.
+
+---
+
+## 9. Laptop Power Management
+
+Running a laptop as a Proxmox node required changing its normal power-management behavior.
+
+I wanted it to remain running when the lid was closed.
+
+In the systemd-logind configuration, I set:
 
 ```ini
 [Login]
@@ -177,15 +275,23 @@ HandleLidSwitchExternalPower=ignore
 HandleLidSwitchDocked=ignore
 ```
 
+I also masked the systemd sleep-related targets:
+
 ```bash
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 ```
 
-The host remained reachable after the lid was closed. This setting does not
-replace normal thermal monitoring; vents must remain unobstructed during
-continuous operation.
+Afterward, I closed the laptop lid and verified that the system remained reachable.
 
-## Validation Commands
+The laptop isn't designed specifically for continuous server operation, so I also need to pay attention to cooling and physical placement.
+
+---
+
+## 10. Post-Change Validation
+
+After the expansion, I checked the nodes, cluster, storage, and migrated guests.
+
+The command set included:
 
 ```bash
 pveversion
@@ -199,30 +305,30 @@ qm status 320
 qm status 500
 ```
 
+The checks confirmed that the fourth node was recognized, quorum was healthy, and the migrated guests were available on their destination nodes.
+
+The shared backup storage was also accessible from the added host.
+
+---
+
 ## Result
 
-- [x] `pve04` installed and validated
-- [x] USB Gigabit Ethernet recognized with the `r8152` driver
-- [x] Sleep and lid-close shutdown behavior disabled
-- [x] Four nodes standardized on Proxmox VE 9.2.10
-- [x] Four nodes running kernel 7.0.14-12-pve
-- [x] Four-node membership and three-vote quorum verified
-- [x] Shared backup storage active on the added node
-- [x] `vulnscan01` migrated to `pve04` and validated
-- [x] `wazuh01` migrated to `pve03` and validated
-- [x] Essential-service autostart reviewed and configured
-- [x] Current architecture and asset inventory updated
+The fourth-node expansion was successful.
 
-## Skills Demonstrated
+`pve04` joined the cluster, all four voting nodes were validated, and the nodes were standardized on the recorded Proxmox version and kernel.
 
-- Proxmox VE installation and cluster expansion
-- Linux repository management and rolling patching
-- Cluster quorum analysis
-- USB Ethernet validation and Linux driver identification
-- Static management addressing and hostname resolution
-- Offline VM migration and recovery planning
-- QEMU guest-agent validation
-- Workload placement and capacity planning
-- Service startup sequencing
-- Laptop power-management configuration for server use
-- Change documentation and evidence sanitization
+I moved `vulnscan01` and `wazuh01` to improve workload distribution and verified their guest state afterward.
+
+I also adjusted laptop power-management behavior and reviewed automatic guest startup.
+
+The expansion gave me more capacity for additional services and a chance to practice cluster membership, rolling updates, offline migration, backup-aware changes, and post-change validation.
+
+The four-node cluster remains the foundation for the broader SOC/NOC lab.
+
+## Related Documentation
+
+- [Proxmox Cluster Build](03-proxmox-cluster-build.md)
+- [Proxmox Backup and Disaster Recovery](01-proxmox-backup.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
+- [Asset Inventory](02-asset-inventory.md)
