@@ -1,71 +1,431 @@
 # VLAN Migration Dependency Checklist
 
-## Purpose
+## Overview
 
-Use this checklist before and after moving any asset from the flat `192.168.1.0/24` network to a routed VLAN. A migration is not complete when the guest has its new address; every consumer, firewall path, monitoring target, name record, and operational document must also be updated and tested.
+I've been moving parts of my homelab from the original flat `192.168.1.0/24` network into separate VLANs.
 
-## Current VLAN and Gateway Matrix
+The purpose is to separate management, servers, users, monitoring, and security-testing systems while controlling traffic between them through OPNsense.
 
-| VLAN | OPNsense interface | Zone | Subnet | Gateway | Current assets |
-|---:|---|---|---|---|---|
-| 10 | `lan` / LABMGMT | Management | `10.10.10.0/24` | `10.10.10.1` | Reserved for management services |
-| 20 | `opt1` / SERVERS | Servers | `10.10.20.0/24` | `10.10.20.1` | `dc01` (`10.10.20.10`) |
-| 30 | `opt2` / USERS | Users | `10.10.30.0/24` | `10.10.30.1` | `win11-01` (`10.10.30.160`) |
-| 40 | `opt3` / SOCNOC | Monitoring | `10.10.40.0/24` | `10.10.40.1` | `nms01` (`10.10.40.10`), `wazuh01` (`10.10.40.20`) |
-| 50 | `opt4` / RED | Attack lab | `10.10.50.0/24` | `10.10.50.1` | `kali01` (`10.10.50.113`) |
-| 60 | `opt5` / DMZRANGE | Vulnerable targets | `10.10.60.0/24` | `10.10.60.1` | `target01` (`10.10.60.10`) |
+The work has also demonstrated that changing a virtual machine's IP address is only one part of a network migration.
 
-The Proxmox nodes and selected supporting services remain on the flat `192.168.1.0/24` management/home network. OPNsense `fw01` is VM 220 on `pve01`; its flat-side address is `192.168.1.187`, and its internal management address is `10.10.10.1`.
+Monitoring targets, DNS records, firewall rules, remote-access connections, scripts, and other services may still depend on the old address.
 
-## Required Pre-Migration Audit
+During my October 2026 trip, I encountered another reason to reconsider the original addressing scheme: the Wi-Fi network where I was staying used the same `192.168.1.0/24` subnet as my home network, causing a routing conflict.
 
-- [ ] Record the asset's old address, new static address, VLAN, gateway, DNS servers, Proxmox node, VM/LXC ID, bridge, tag, and MAC address.
-- [ ] Search the repository for the old IP and hostname.
-- [ ] Search active configuration on monitoring, remote-access, DNS, automation, and application hosts.
-- [ ] Inventory inbound and outbound service flows, including source, destination, protocol, port, and required reply path.
-- [ ] Create narrow OPNsense rules on the source interface before moving the asset.
-- [ ] For trusted traffic entering OPNsense through WAN/flat LAN, enable **Disable reply-to** to prevent asymmetric replies through the AT&T gateway.
-- [ ] Create or update stable DNS records before clients are changed to use the new name/address.
-- [ ] Export or back up every configuration or database that will be modified.
-- [ ] Define explicit success tests and a rollback point.
+I'm therefore considering moving the remaining default LAN to `192.168.11.0/24`.
 
-## Dependency Consumers to Check
+**That renumbering is planned, not completed.**
 
-| Consumer | Items to inspect |
+This checklist is intended to help me make incremental changes without losing access to the systems needed to recover from a failed migration.
+
+---
+
+## 1. VLAN Structure
+
+The documented lab VLANs are:
+
+| VLAN | Purpose | Subnet | Gateway |
+|---|---|---|---|
+| 10 | Management | `10.10.10.0/24` | `10.10.10.1` |
+| 20 | Servers | `10.10.20.0/24` | `10.10.20.1` |
+| 30 | Users | `10.10.30.0/24` | `10.10.30.1` |
+| 40 | SOC / Security | `10.10.40.0/24` | `10.10.40.1` |
+| 50 | Attack / Test | `10.10.50.0/24` | `10.10.50.1` |
+| 60 | Guest / Test range | `10.10.60.0/24` | `10.10.60.1` |
+
+The VLAN interface labels recorded in OPNsense include `LABMGMT`, `SERVERS`, `USERS`, `SOCNOC`, `RED`, and `DMZRANGE`.
+
+Some labels reflect the original configuration and don't exactly match the current descriptive names. I'll reconcile those when reviewing the firewall.
+
+`fw01` is OPNsense VMID 220 on `pve01`.
+
+Its documented addresses include:
+
+```text
+Flat LAN / WAN: 192.168.1.187
+Management:     10.10.10.1
+```
+
+The original `192.168.1.0/24` LAN continues to host Proxmox nodes, switches, storage, DNS, and other equipment.
+
+---
+
+## 2. Why I Want to Change the Default LAN
+
+The original LAN is a common consumer-router subnet.
+
+While traveling, my Mac received an address on a remote `192.168.1.0/24` network.
+
+When I attempted to reach my Windows storage server at `192.168.1.208`, macOS selected the local Wi-Fi route instead of the Tailscale subnet route.
+
+That was confirmed through the routing table.
+
+The proposed replacement is:
+
+```text
+192.168.11.0/24
+```
+
+A less commonly used subnet would reduce the likelihood of encountering the same overlap.
+
+It wouldn't guarantee that no future remote network would use that range.
+
+Before selecting the final network, I want to check for conflicts with existing VLANs, VPN routes, and other private subnets used by the lab.
+
+---
+
+## 3. Systems Affected by Default-LAN Renumbering
+
+The default-LAN change would affect considerably more than the AT&T gateway.
+
+Examples of documented addresses include:
+
+| System | Existing address |
 |---|---|
-| OPNsense | Interface rules, aliases, NAT, policy routing, reply-to behavior, logging |
-| LibreNMS | `devices.hostname`, SNMP reachability, web-server bind/name, local SNMP bind |
-| Wazuh | Agent manager/enrollment addresses, agent keys, manager listeners, local SNMP bind |
-| Uptime Kuma | Monitor URL, hostname, port, TLS behavior, firewall path |
-| Guacamole | Connection hostname/IP and port; firewall path from `192.168.1.151` |
-| DNS | Pi-hole local records, AD-integrated DNS records, forwarders, client resolvers |
-| PiAlert | Scan scope and the fact that ARP discovery does not cross routed VLANs |
-| Automation | Ansible inventory, scripts, scheduled jobs, SSH config, health checks |
-| Documentation | README, inventory, diagrams, runbooks, shutdown/startup checks, lab procedures |
+| AT&T gateway | `192.168.1.254` |
+| `pve01` | `192.168.1.10` |
+| `pve02` | `192.168.1.11` |
+| `pve03` | `192.168.1.12` |
+| `pve04` | `192.168.1.13` |
+| `dns01` | `192.168.1.20` |
+| `sw01` | `192.168.1.21` |
+| `sw02` | `192.168.1.22` |
+| `docker` | `192.168.1.174` |
+| `fw01` WAN | `192.168.1.187` |
+| `storage01` | `192.168.1.208` |
+| `tailscale01` | Previously `192.168.1.185` |
+| `util01` | `192.168.1.243` |
 
-## Required Post-Migration Validation
+These are documented addresses rather than a newly verified inventory.
 
-- [ ] Confirm the guest reports the expected address, route, DNS servers, and interface state.
-- [ ] Test the gateway and required destinations from the migrated guest.
-- [ ] Test each required flow from its real source; a firewall rule existing is not proof that the flow works.
-- [ ] Verify return traffic and inspect OPNsense live logs or packet capture when a TCP handshake fails.
-- [ ] Verify LibreNMS polling and alert recovery.
-- [ ] Verify Wazuh agents appear Active and their logs show connection to `10.10.40.20:1514`.
-- [ ] Verify Uptime Kuma and Guacamole targets after their records are updated.
-- [ ] Verify forward and reverse DNS where applicable.
-- [ ] Search again for the old address and classify every remaining result as active, historical, backup, cache, or log evidence.
-- [ ] Update current-state documentation and link the validation evidence to the tracking issue.
-- [ ] Remove the old interface/address only after all dependencies pass.
+Before renumbering anything, I need to distinguish DHCP leases, DHCP reservations, and manually configured static addresses.
 
-## Known Audit Work — GitHub Issue #1
+The goal is to avoid overlooking equipment simply because it isn't in the Proxmox inventory.
 
-The post-migration dependency audit is tracked in GitHub issue #1. At the time of this documentation update:
+---
 
-- `target01` now uses `10.10.40.20` for Wazuh and has successfully connected on TCP 1514.
-- LibreNMS device records for `nms01`, `dc01`, and `wazuh01` still require live remediation.
-- LibreNMS nginx/SNMP bindings and the Wazuh SNMP binding still require live remediation.
-- The Uptime Kuma Wazuh dashboard monitor and six Guacamole connections still require coordinated firewall and target updates.
-- Stable Pi-hole records for migrated Linux systems still need to be created and verified.
-- PiAlert remains limited to its local flat broadcast domain unless a routed/distributed discovery method is implemented.
+## 4. Pre-Migration Inventory
 
-Do not migrate another asset until issue #1's active dependency items have been remediated or explicitly accepted as tracked exceptions.
+Before moving a guest or changing an infrastructure address, I record:
+
+- Hostname and existing address
+- Intended VLAN and new address
+- Gateway and DNS settings
+- VM/LXC ID and Proxmox node
+- Bridge and VLAN tag
+- Physical switch port, where applicable
+- Inbound and outbound network dependencies
+- Monitoring targets
+- Remote administration method
+- Configuration backup or rollback method
+
+For a Proxmox guest, I check its network configuration before changing it.
+
+For example:
+
+```bash
+qm config 500
+```
+
+For containers:
+
+```bash
+pct config 200
+```
+
+The actual VMID depends on the system being migrated.
+
+I also search the repository and active configuration files for the existing IP address and hostname.
+
+Documentation search alone is insufficient because dependencies may exist in applications, databases, scheduled tasks, or monitoring configuration.
+
+---
+
+## 5. Firewall and Routing Dependencies
+
+Before migrating a service to another VLAN, I identify the communication it needs.
+
+For example, a Wazuh agent must be able to communicate with the Wazuh manager at `10.10.40.20`, normally using TCP 1514.
+
+A domain-joined Windows workstation requires access to domain-controller services on `dc01` (`10.10.20.10`).
+
+LibreNMS needs network access to the systems and devices it monitors.
+
+For each required connection, I record:
+
+```text
+Source system:
+Source VLAN:
+Destination system:
+Destination VLAN:
+Protocol:
+Destination port:
+Expected route:
+Applicable firewall rule:
+Validation test:
+```
+
+### OPNsense Reply-To
+
+I encountered a problem with reply-to behavior on OPNsense rules permitting trusted access from the original LAN.
+
+A rule could permit incoming traffic while replies returned through an unintended gateway.
+
+Disabling reply-to on the appropriate rule corrected the path.
+
+This is a specific concern when the OPNsense WAN interface is also connected to the original home LAN.
+
+I check both directions of the traffic before concluding that a connection is working.
+
+---
+
+## 6. Service Dependencies
+
+An address change can affect many services beyond the migrated host.
+
+| Service | What needs checking |
+|---|---|
+| Pi-hole | Local records, conditional forwarding, client resolver configuration |
+| Active Directory DNS | A and SRV records, client DNS settings, domain-controller discovery |
+| LibreNMS | Device records, SNMP targets and service reachability |
+| Wazuh | Manager addresses, enrollment and agent connectivity |
+| Uptime Kuma | Hostnames, monitor IPs, ports and URLs |
+| Grafana / Prometheus | Scrape targets and dashboard queries |
+| NetBox | Device interfaces, IP assignments and VLAN records |
+| Guacamole | SSH/RDP connection destinations |
+| Tailscale | Advertised subnet routes and reachable management addresses |
+| Nginx Proxy Manager | Proxy upstream targets and access lists |
+| Automation | Ansible inventory, scripts, SSH configuration and scheduled tasks |
+| PiAlert | ARP discovery scope, which does not cross routed VLANs |
+
+This is why I want to migrate one system or group of closely related systems at a time.
+
+---
+
+## 7. Migrating an Individual Guest
+
+The general procedure is:
+
+1. Confirm the guest and its dependencies.
+2. Record its existing address, route, DNS and VLAN configuration.
+3. Back up or export the relevant configuration.
+4. Prepare the necessary OPNsense rules.
+5. Prepare new DNS and monitoring records.
+6. Change the guest's VLAN tag or network interface configuration.
+7. Assign and verify the new IP address.
+8. Test the default gateway.
+9. Test required DNS and application connections.
+10. Verify access from real client systems.
+11. Update monitoring and remote-access targets.
+12. Remove obsolete records only after validation.
+13. Update documentation.
+
+A guest successfully pinging its new gateway isn't enough to declare the migration complete.
+
+I also want to confirm the services that depend on it continue working.
+
+---
+
+## 8. Default-LAN Migration Plan
+
+The proposed default-LAN renumbering requires more preparation because it affects several foundational services simultaneously.
+
+### Stage 1 — Verify the Current Network
+
+Before making changes, I want to verify:
+
+- AT&T gateway configuration and DHCP range
+- Static addresses and DHCP reservations
+- Proxmox management interfaces
+- Switch management IPs
+- Pi-hole DNS settings
+- Storage-server SMB access
+- Tailscale subnet advertising
+- OPNsense WAN configuration and routes
+- Firewall rules and aliases
+- Monitoring and automation targets
+
+I also want to identify which clients can provide local administrative access if routing or DNS stops working.
+
+### Stage 2 — Prepare the New Address Plan
+
+The candidate is `192.168.11.0/24`.
+
+A straightforward starting point would preserve host numbers where practical—for example, `pve01` could move from `192.168.1.10` to `192.168.11.10`.
+
+That is a proposal, not an assigned or implemented address.
+
+I would check reservations and conflicts before finalizing each destination.
+
+The gateway address, DHCP scope, static assignments, DNS resolvers, and management connections need to be coordinated.
+
+### Stage 3 — Preserve an Administrative Recovery Path
+
+Before changing the gateway or switch management addresses, I want an independent way to reach the equipment.
+
+That may involve a directly connected laptop, temporary static addressing, or another verified management path.
+
+I don't want the only available management session to depend on the subnet being changed.
+
+### Stage 4 — Migrate in Controlled Groups
+
+I would start with low-dependency systems, verify connectivity, and then address shared infrastructure.
+
+Foundational services such as DNS, storage, Proxmox management, and OPNsense need specific transition plans rather than arbitrary changes.
+
+I would avoid simultaneously changing the AT&T gateway, Proxmox interfaces, switch management, and Pi-hole.
+
+### Stage 5 — Update Dependencies
+
+As addresses change, I would update DNS records, reservations, monitoring, proxy targets, scripts, Tailscale subnet advertisements, and documentation.
+
+For the Tailscale router, that includes updating the subnet route and verifying it has been approved and accepted by remote clients.
+
+The old and new routes should be handled deliberately to avoid leaving an obsolete remote-access path in place.
+
+### Stage 6 — Confirm the New Network
+
+The migration is successful only when:
+
+- The gateway and switch infrastructure are accessible.
+- Proxmox nodes and guests are reachable.
+- DNS works from ordinary clients.
+- OPNsense routes traffic as intended.
+- Storage and backups are usable.
+- Monitoring targets have recovered.
+- Remote access works from outside the home LAN.
+- No unexplained dependencies remain on the old network.
+
+---
+
+## 9. Rollback Criteria
+
+I would stop or reverse a migration if it causes broad loss of management access, DNS, storage, routing, or other essential services.
+
+The specific rollback must be prepared before making the change.
+
+For an individual guest, that usually means restoring its original VLAN tag, address, gateway, and DNS settings.
+
+For the default LAN, a rollback may require restoring the previous gateway subnet, DHCP configuration, static addresses, switch management settings, and dependent routing.
+
+I would verify that the original `192.168.1.0/24` network is functional again before resuming.
+
+A rollback should restore a known working configuration rather than introduce another set of simultaneous changes.
+
+---
+
+## 10. Post-Migration Verification
+
+After moving a guest, I check the result from several locations.
+
+On the guest:
+
+```bash
+ip -br addr
+ip route
+resolvectl status
+```
+
+For Windows systems:
+
+```powershell
+ipconfig /all
+route print
+```
+
+I also test the service from an actual client and confirm the connection in the relevant application.
+
+For Wazuh, that means receiving fresh telemetry.
+
+For LibreNMS, I check successful polling.
+
+For Guacamole, I test an actual remote session.
+
+For Proxmox storage, I confirm the backup share is accessible and archives can be listed.
+
+I then search for the old address again.
+
+Remaining references are classified as current configuration, historical records, backup data, or old logs.
+
+Historical IP addresses don't need to be erased from incident documentation, but active configuration shouldn't silently continue pointing at retired addresses.
+
+---
+
+## 11. Existing Dependency Audit
+
+A previous migration audit was recorded in GitHub issue #1.
+
+At the time of that audit, items requiring additional work included LibreNMS device records and bindings, Wazuh-related settings, Uptime Kuma targets, Guacamole connections, Pi-hole records, and PiAlert's discovery limitations.
+
+The audit also recorded that `target01` had successfully connected to the Wazuh manager on TCP 1514.
+
+These are historical observations.
+
+Before another migration, I'll review the issue against the current live configuration and determine which items remain open.
+
+I don't want to close an issue simply because a document was updated, or retain an obsolete warning after the underlying problem has been resolved.
+
+---
+
+## 12. Migration Record Template
+
+```text
+Change date:
+System:
+VMID / CTID:
+Proxmox node:
+
+Original VLAN:
+Original IP:
+Original gateway:
+Original DNS:
+
+New VLAN:
+New IP:
+New gateway:
+New DNS:
+
+Network dependencies:
+Firewall changes:
+DNS changes:
+Monitoring changes:
+Remote-access changes:
+
+Pre-change backup:
+Rollback procedure:
+
+Gateway test:
+DNS test:
+Application test:
+Client-side test:
+Monitoring verification:
+
+Result:
+Remaining issues:
+Documentation updated:
+```
+
+This gives me a way to record both the changes and the evidence that the migrated system still works.
+
+---
+
+## Result
+
+The VLAN migration is an ongoing project.
+
+Several services have already been moved into segmented networks, but the original flat LAN still hosts important infrastructure.
+
+The next major change under consideration is renumbering the default LAN to reduce address overlap during remote access.
+
+I want to approach that as a coordinated infrastructure change rather than a collection of isolated IP edits.
+
+The main requirement is to preserve management access and verify every dependent service before considering a migration complete.
+
+## Related Documentation
+
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [OPNsense Routing and Firewalling](05-opnsense.md)
+- [Tailscale Remote Access](23-tailscale-remote-access.md)
+- [Asset Inventory](02-asset-inventory.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
