@@ -4,8 +4,6 @@ expected_running_guests:
     vms:
       - id: 100
         name: dc01
-      - id: 210
-        name: docker
     lxcs:
       - id: 200
         name: apache-guacamole
@@ -13,7 +11,9 @@ expected_running_guests:
         name: pialert
 
   pve02:
-    vms: []
+    vms:
+      - id: 210
+        name: docker
     lxcs: []
 
   pve03:
