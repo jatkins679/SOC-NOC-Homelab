@@ -1,891 +1,529 @@
 # NOC Network and Service Troubleshooting Runbook
 
-## Purpose
+## Overview
 
-This runbook documents the troubleshooting process I use in the SOC/NOC
-homelab for infrastructure and service incidents.
+This is the troubleshooting reference I use for network and service problems in my homelab.
 
-The goal is to use a repeatable operations workflow rather than making several
-changes at once and hoping one fixes the problem.
+The environment includes Proxmox, Linux and Windows servers, managed switches, VLANs, OPNsense, DNS, shared storage, monitoring applications, and remote-access services.
 
-Typical incidents covered here include:
+With that many components, an outage can have several possible causes.
 
-- Host unreachable
-- Service unavailable
-- DNS failure
-- Internet connectivity failure
-- Proxmox node or cluster problem
-- VM or LXC unavailable
-- Shared-storage / backup failure
-- Disk-capacity or filesystem problem
-- Wazuh or another Linux service failure
-- Windows endpoint or domain-connectivity problem
+I try to establish what's actually failing before making configuration changes.
 
-The core principle is:
-
-> Collect state first, isolate the failing layer, change one thing, and verify
-> the result.
+The general approach is to collect the current state, work through the relevant dependencies, make one controlled change, and verify the result from the system that originally experienced the problem.
 
 ---
 
-# 1. Standard Troubleshooting Workflow
+## 1. Initial Assessment
 
-```text
-Alert / user report
-        |
-        v
-Identify affected service and scope
-        |
-        v
-Confirm the problem independently
-        |
-        v
-Check physical / link state
-        |
-        v
-Check IP addressing
-        |
-        v
-Check routing
-        |
-        v
-Check DNS
-        |
-        v
-Check port / service reachability
-        |
-        v
-Check service state and logs
-        |
-        v
-Check storage / CPU / memory
-        |
-        v
-Check dependencies
-        |
-        v
-Make one controlled change
-        |
-        v
-Retest
-        |
-        v
-Verify service restoration
-        |
-        v
-Document cause and resolution
-```
+When something stops working, I start with a few questions:
 
-This sequence is adjusted depending on the symptom, but the general method
-remains the same.
+1. What service or system is affected?
+2. Is the problem limited to one host, one VLAN, or multiple systems?
+3. When did the problem start?
+4. What changed shortly before the failure?
+5. Can I reproduce it from another client?
+
+The answers determine which part of the system needs attention.
+
+For example, if a laptop can reach its local gateway but can't reach an external IP address, I investigate routing or VPN behavior before concentrating on DNS.
+
+If DNS resolution fails but Internet IP connectivity works, the resolver configuration and DNS service become more likely causes.
+
+I prefer read-only commands and observations before changing configuration.
 
 ---
 
-# 2. First Five Questions
+## 2. Core Infrastructure Reference
 
-Before changing anything, determine:
+These are documented addresses used throughout the runbook.
 
-1. **What is affected?**
-2. **Is the issue one host, one service, one subnet, or the whole environment?**
-3. **When did it start?**
-4. **What changed immediately before it started?**
-5. **Can I reproduce the problem from another system?**
+| Host | IP address | Purpose |
+|---|---|---|
+| AT&T gateway | `192.168.1.254` | Internet gateway |
+| `pve01` | `192.168.1.10` | Proxmox |
+| `pve02` | `192.168.1.11` | Proxmox |
+| `pve03` | `192.168.1.12` | Proxmox |
+| `pve04` | `192.168.1.13` | Proxmox |
+| `dns01` | `192.168.1.20` | Pi-hole |
+| `sw01` | `192.168.1.21` | Cisco SG350-10 |
+| `sw02` | `192.168.1.22` | UniFi US-8 |
+| `docker` | `192.168.1.174` | Docker services |
+| `storage01` | `192.168.1.208` | SMB backup storage |
+| `dc01` | `10.10.20.10` | Active Directory and DNS |
+| `wazuh01` | `10.10.40.20` | Wazuh SIEM |
+| `nms01` | `10.10.40.10` | LibreNMS |
+| `fw01` | `192.168.1.187` / `10.10.10.1` | OPNsense |
 
-Examples:
+These are documented values, not the result of a fresh discovery.
 
-- If one VM cannot reach the Internet but other systems can, the ISP is probably
-  not the first place to investigate.
-- If several clients can ping `192.168.1.20` but cannot resolve names, focus on
-  DNS rather than Ethernet.
-- If the Proxmox GUI is unavailable but the host answers SSH, focus on Proxmox
-  services rather than host power.
+The original `192.168.1.0/24` network is still in use, alongside the segmented VLANs.
 
----
-
-# 3. Current Core Infrastructure Reference
-
-| System | Role | Address |
-|---|---|---:|
-| AT&T gateway | Internet edge / default gateway | `192.168.1.254` |
-| `mgmt01` | Independent Linux management host | `192.168.1.5` |
-| `pve01` | Proxmox cluster node | `192.168.1.10` |
-| `pve02` | Proxmox cluster node | `192.168.1.11` |
-| `pve03` | Proxmox cluster node | `192.168.1.12` |
-| `pve04` | Proxmox cluster node | `192.168.1.13` |
-| `dns01` | Pi-hole DNS | `192.168.1.20` |
-| `sw01` | Cisco SG350-10 managed switch | `192.168.1.21` |
-| `dc01` | Active Directory / DNS | `10.10.20.10` |
-| `apache-guacamole` | Remote-access gateway | `192.168.1.151` |
-| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
-| `kali01` | Security testing | `10.10.50.113` |
-| `target01` | Ubuntu monitored target | `10.10.60.10` |
-| `t-20-backup` | Proxmox CIFS backup storage | Shared storage target |
-
-The primary management network is currently:
-
-```text
-192.168.1.0/24
-```
-
-with default gateway:
-
-```text
-192.168.1.254
-```
+The planned move to another default-LAN subnet has not yet been completed.
 
 ---
 
-# 4. Incident Priority
+## 3. Host or Service Unreachable
 
-A simple lab priority model:
+The first distinction is whether the host is unreachable or only one service is unavailable.
 
-| Priority | Example |
-|---|---|
-| **P1 — Critical** | Broad network outage, DNS unavailable to most clients, storage failure threatening data |
-| **P2 — High** | Proxmox cluster degraded, important service unavailable, multiple systems affected |
-| **P3 — Medium** | One host or application unavailable, backup target inaccessible |
-| **P4 — Low** | Intermittent issue, noncritical lab workload, minor configuration problem |
-| **P5 — Maintenance / Test** | Planned outage, controlled troubleshooting exercise |
+### Linux Checks
 
-Priority should be based on impact, not merely how interesting the technical
-problem is.
-
----
-
-# 5. Host Unreachable Runbook
-
-## Symptom
-
-A host cannot be reached by ping, SSH, RDP, HTTP, or another expected protocol.
-
-## Step 1 — Confirm the Address
-
-Check the asset inventory and, when applicable, DHCP state.
-
-Do not assume a DHCP-observed address is permanent.
-
-## Step 2 — Test Basic Reachability
-
-From `mgmt01` or another known-good host:
+On the affected host:
 
 ```bash
-ping -c 4 192.168.1.X
+ip -br link
+ip -br addr
+ip route
 ```
 
-Interpretation:
+These show whether the interface is up, whether it has the expected address, and where traffic will be routed.
 
-- Reply received: Layer 3 path exists.
-- No reply: host may be down, filtered, incorrectly addressed, or unreachable.
-
-Remember that ICMP can be blocked, so ping failure alone does not prove the host
-is down.
-
-## Step 3 — Test the Required Port
-
-Examples:
+From a known-good client:
 
 ```bash
-nc -vz 192.168.1.X 22
-nc -vz 192.168.1.X 443
-nc -vz 192.168.1.X 3389
+ping -c 4 192.168.1.174
 ```
 
-This separates:
+This example tests `docker` (`192.168.1.174`).
 
-```text
-host reachable
+If the host responds, I then test the application port.
+
+For example:
+
+```bash
+nc -vz 192.168.1.174 3001
 ```
 
-from:
+Port 3001 is used by the Uptime Kuma instance on `docker`.
 
-```text
-required application port reachable
+A failed ping doesn't conclusively mean a host is down because ICMP may be filtered.
+
+A successful TCP connection doesn't prove that the application is functioning correctly.
+
+### What to Check Next
+
+If the host is reachable but the application isn't, I inspect the service state, listening sockets, and logs.
+
+```bash
+systemctl --failed
+sudo ss -lntp
 ```
 
-## Step 4 — Check Local Interface State
+For a systemd-managed service:
+
+```bash
+sudo systemctl status SERVICE --no-pager -l
+sudo journalctl -u SERVICE --since "30 minutes ago" --no-pager
+```
+
+`SERVICE` is a placeholder for the actual service name.
+
+For Docker workloads, I would inspect the container status and logs instead.
+
+---
+
+## 4. Internet Connectivity Failure
+
+When a system can communicate on the local network but can't reach Internet services, I separate gateway connectivity, external routing, DNS, and VPN behavior.
 
 On Linux:
 
 ```bash
 ip -br addr
-ip -br link
-```
-
-Look for:
-
-- expected interface
-- `UP` state
-- expected IPv4 address
-- unexpected additional or missing interfaces
-
-## Step 5 — Check Routing
-
-```bash
 ip route
-```
-
-Verify:
-
-- local subnet route
-- default route
-- correct interface
-- correct gateway
-
----
-
-# 6. Internet Connectivity Runbook
-
-## Symptom
-
-A host can reach local systems but cannot reach Internet services.
-
-Work outward from the host.
-
-## Test 1 — Local Interface
-
-```bash
-ip -br addr
-```
-
-## Test 2 — Gateway
-
-```bash
 ping -c 3 192.168.1.254
 ```
 
-If the gateway cannot be reached, investigate local addressing, link state,
-bridge configuration, switch connection, or host firewall.
+I then test an external IP address and a hostname.
 
-## Test 3 — External IP
-
-A known external IP test can distinguish routing from DNS.
-
-If external IP connectivity works but names fail, investigate DNS.
-
-## Test 4 — DNS Name
+For example:
 
 ```bash
-ping -c 3 google.com
+ping -c 3 1.1.1.1
+dig example.com
 ```
 
-Interpretation:
+If external IP connectivity works but name resolution fails, DNS becomes the primary focus.
 
-```text
-gateway works
-external IP works
-hostname fails
-```
+If neither works, I examine the route and any VPN-related interfaces or policies.
 
-strongly points toward DNS.
+### Mac VPN Troubleshooting Example
+
+During a trip, one of my MacBooks connected successfully to Wi-Fi and could ping the local gateway, but couldn't access Internet addresses or hostnames.
+
+The problem occurred on more than one Wi-Fi network.
+
+It turned out that Surfshark VPN was still connected.
+
+Disconnecting Surfshark restored Internet connectivity.
+
+The important distinction was that Wi-Fi association and local gateway reachability did not prove that Internet routing was working.
+
+This also gives me a reason to include active VPN configuration in future Mac connectivity checks rather than focusing only on Wi-Fi and DNS.
 
 ---
 
-# 7. DNS Failure Runbook
+## 5. DNS Troubleshooting
 
-DNS failures can look like general network outages.
+My primary general-purpose DNS server is `dns01` (`192.168.1.20`), running Pi-hole on a physical Raspberry Pi.
 
-The lab intentionally separates DNS from Proxmox by hosting Pi-hole on the
-physical `dns01` Raspberry Pi.
+I check the client's resolver configuration first.
 
-## Client Checks
-
-### Inspect Resolver State
+On a system using systemd-resolved:
 
 ```bash
 resolvectl status
 ```
 
-Confirm the client is using the expected resolver.
-
-For systems intended to use Pi-hole directly:
-
-```text
-192.168.1.20
-```
-
-### Test the DNS Host
+Then I test Pi-hole directly:
 
 ```bash
-ping -c 3 192.168.1.20
+dig @192.168.1.20 example.com
 ```
 
-### Test Resolution
-
-Use an available DNS tool such as:
-
-```bash
-dig example.com
-```
-
-or:
-
-```bash
-nslookup example.com
-```
-
-## Server Checks on `dns01`
+On `dns01`, I check the service:
 
 ```bash
 pihole status
 ```
 
-Confirm:
-
-- DNS service running
-- FTL operational
-- filtering enabled
-
-Port 53 should be available for DNS.
-
-A useful layered diagnosis is:
+The troubleshooting path is:
 
 ```text
-Client
-  |
-  v
-Client resolver configuration
-  |
-  v
-Network path to 192.168.1.20
-  |
-  v
-Pi-hole / FTL
-  |
-  v
+Client DNS settings
+         |
+         v
+Network route to dns01
+         |
+         v
+Pi-hole service / port 53
+         |
+         v
 Upstream DNS
 ```
 
-Do not change all layers at once.
+I also check whether the problem affects all clients or only a particular VLAN.
 
----
+### Active Directory DNS
 
-# 8. Active Directory DNS / Domain Connectivity
+Domain-joined Windows clients use `dc01` (`10.10.20.10`) for domain DNS and service discovery.
 
-Windows domain problems are frequently DNS problems.
-
-## On the Windows Endpoint
-
-Inspect configured DNS:
+Useful Windows checks include:
 
 ```powershell
 ipconfig /all
+Resolve-DnsName dc01.corp.home.arpa
+Resolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.corp.home.arpa
+Test-ComputerSecureChannel
 ```
 
-Verify domain discovery:
-
-```powershell
-nslookup dc01.corp.home.arpa
-```
-
-Verify the secure channel:
-
-```powershell
-Test-ComputerSecureChannel -Verbose
-```
-
-Useful questions:
-
-- Is the endpoint using the AD DNS server when required?
-- Does `dc01.corp.home.arpa` resolve?
-- Are AD locator records available?
-- Is the workstation still joined to `corp.home.arpa`?
-- Does the secure channel validate?
-
-Avoid treating an AD authentication failure as a password problem until DNS and
-domain discovery have been checked.
+A failed domain login or trust operation may be caused by incorrect DNS, unavailable domain-controller services, routing, or an actual secure-channel problem.
 
 ---
 
-# 9. Proxmox Node Troubleshooting
+## 6. VLAN and Firewall Connectivity
 
-## Symptom
+With VLAN segmentation, a host can have a valid IP address and still be unable to reach a service on another network.
 
-A Proxmox node appears offline, cannot be administered, or disappears from the
-cluster.
+For a connection between VLANs, I check:
 
-## Check Host Identity
+1. Guest interface and VLAN tag
+2. Proxmox bridge assignment
+3. Switch trunk configuration
+4. OPNsense gateway
+5. Source-interface firewall rules
+6. Return routing
+7. Destination service and port
+
+For example, `win11-01` on VLAN 30 needs to reach Wazuh on VLAN 40.
+
+From Windows:
+
+```powershell
+Test-NetConnection 10.10.40.20 -Port 1514
+```
+
+I compare the test against OPNsense firewall logs.
+
+A pass entry in the firewall log confirms a rule matched, but it doesn't necessarily establish that the TCP session completed.
+
+### The OPNsense Reply-To Problem
+
+I encountered this when attempting to reach internal lab services from a trusted Mac on the flat LAN.
+
+The rule permitted the incoming traffic, but OPNsense's reply-to behavior could send responses along the wrong route.
+
+Disabling reply-to on the appropriate trusted-access WAN rule corrected the return path.
+
+The full incident is covered in [OPNsense Routing and Firewalling](05-opnsense.md).
+
+---
+
+## 7. Proxmox Cluster Troubleshooting
+
+When a Proxmox node becomes unreachable or cluster operations behave unexpectedly, I start with the node's own connectivity and then check the cluster state.
+
+On a Proxmox node:
 
 ```bash
 hostname
 hostname -f
-```
-
-Stable hostnames matter to cluster membership and certificates.
-
-## Check Networking
-
-```bash
 ip -br addr
 ip route
-```
-
-Verify the management address and default route.
-
-Expected cluster node addresses are:
-
-```text
-pve01  192.168.1.10
-pve02  192.168.1.11
-pve03  192.168.1.12
-pve04  192.168.1.13
-```
-
-## Check Cluster State
-
-```bash
-pvecm status
 ```
 
 Then:
 
 ```bash
+pvecm status
 pvecm nodes
-```
-
-Questions:
-
-- Are all four nodes listed?
-- Is the cluster quorate?
-- How many votes are expected?
-- How many votes are present?
-
-Normal lab state is:
-
-```text
-Nodes:          4
-Expected votes: 4
-Total votes:    4
-Quorum:         3
-Quorate:        Yes
-```
-
-## Check Cluster-Wide Node State
-
-```bash
 pvesh get /nodes
 ```
 
-Expected healthy result includes:
+The four-node cluster normally has four voting members and requires three votes for quorum.
 
-```text
-pve01   online
-pve02   online
-pve03   online
-pve04   online
-```
+One node can become unavailable without necessarily losing quorum.
 
----
+Two unavailable voting nodes would leave the cluster without a majority under the documented configuration.
 
-# 10. Proxmox Quorum Incident
+### Quorum Versus VM Availability
 
-## Symptom
+Quorum governs cluster management and coordinated operation.
 
-One or more nodes are unavailable or cluster operations are restricted.
+It doesn't mean every VM automatically restarts on another node.
 
-A four-node cluster requires a majority.
+The lab primarily uses local VM disks and shared backup storage rather than Ceph-backed automatic workload failover.
 
-With this lab:
-
-```text
-4 voting nodes
-quorum = 3
-```
-
-Losing one node can leave three votes and preserve quorum.
-
-Losing two voting nodes leaves two votes and the cluster no longer has a
-majority.
-
-## Investigation
-
-Check:
-
-```bash
-pvecm status
-pvecm nodes
-```
-
-Then validate the network path among the surviving nodes.
-
-Do not confuse:
-
-```text
-cluster quorum
-```
-
-with:
-
-```text
-automatic VM high availability
-```
-
-This lab does not currently claim Proxmox HA/Ceph automatic workload failover.
+I therefore check guest state, storage, and recovery options separately from quorum.
 
 ---
 
-# 11. VM or LXC Unavailable Runbook
+## 8. VM or LXC Unavailable
 
-## Identify Guest State
+On the relevant Proxmox node, I inspect the guest inventory.
 
-For VMs:
+Virtual machines:
 
 ```bash
 qm list
 ```
 
-For containers:
+Containers:
 
 ```bash
 pct list
 ```
 
-## Inspect Configuration
-
-Examples:
+Then I inspect the specific configuration:
 
 ```bash
-qm config <VMID>
-pct config <CTID>
+qm config 500
+pct config 200
 ```
 
-## Start the Guest
+The examples refer to Wazuh VM 500 and Guacamole LXC 200.
 
-VM:
+Before attempting to start or restart a guest, I check whether it is already running and whether its storage is available.
 
-```bash
-qm start <VMID>
-```
-
-LXC:
-
-```bash
-pct start <CTID>
-```
-
-## Test From Inside
+After a guest starts, I verify networking and the application, not just its Proxmox status.
 
 For a container:
 
 ```bash
-pct exec <CTID> -- ip -br addr
+pct exec 200 -- ip -br addr
 ```
 
-For a VM with QEMU Guest Agent:
-
-```bash
-qm guest exec <VMID> -- ip addr
-```
-
-The troubleshooting sequence is:
-
-```text
-Guest registered?
-      |
-      v
-Guest running?
-      |
-      v
-Virtual NIC attached?
-      |
-      v
-Guest has IP?
-      |
-      v
-Guest has route?
-      |
-      v
-DNS works?
-      |
-      v
-Application works?
-```
+For a VM, I can use the guest agent where available or connect to the guest console.
 
 ---
 
-# 12. Proxmox Storage / Backup Failure
+## 9. Shared Storage and Backup Problems
 
-## Symptom
+The Proxmox backup destination is provided through SMB/CIFS on `storage01` (`192.168.1.208`).
 
-Backup fails, storage appears inactive, or a backup target cannot be reached.
+The Proxmox storage identifier is:
 
-## Check Proxmox Storage
+`t-20-backup`
+
+### Initial Checks
+
+On a Proxmox node:
 
 ```bash
 pvesm status
-```
-
-Current expected storage includes:
-
-```text
-local
-local-lvm
-t-20-backup
-```
-
-## Inspect Backup Target
-
-```bash
 pvesm list t-20-backup
 ```
 
-This is more useful than simply seeing a mount point because it confirms
-Proxmox can list content through its storage configuration.
-
-## Inspect Mounts
+I also inspect the mount and network connectivity:
 
 ```bash
-ls -lah /mnt/pve/
-```
-## Check Network Reachability to the SMB Server
-
-For the current backup target, `storage01` is expected at:
-
-```text
-192.168.1.208
-```
-
-From a Proxmox node:
-
-```bash
-ping -c 3 192.168.1.208
+findmnt /mnt/pve/t-20-backup
 nc -nvz -w 3 192.168.1.208 445
 ```
 
-TCP port `445` is the SMB service. If the Windows server is healthy locally but
-the Proxmox node cannot reach port 445, investigate the Windows network profile
-and firewall before rebuilding the Proxmox storage definition.
+A storage entry appearing in the Proxmox configuration doesn't prove that the underlying share is accessible.
 
-## Check SMB on storage01
+### Windows SMB Network Profile Problem
 
-From an elevated PowerShell session:
+I encountered a situation where the Windows storage server was running and the SMB share existed, but Proxmox couldn't reach it.
+
+After a restart, Windows had classified the Ethernet connection as a Public network.
+
+The Windows firewall policy then interfered with SMB connectivity.
+
+On `storage01`, the useful PowerShell checks include:
 
 ```powershell
-ipconfig
 Get-Service LanmanServer
 Get-SmbShare
 Get-NetTCPConnection -LocalPort 445 -State Listen
 Get-NetConnectionProfile
 ```
 
-Verify:
+After confirming which trusted Ethernet interface was affected, correcting its network category to Private restored the expected SMB access.
 
-- the Ethernet interface still has the expected IP address;
-- the `LanmanServer` service is running;
-- the `ProxmoxBackups` share still exists;
-- Windows is listening on TCP 445;
-- the active Ethernet connection is classified as `Private`.
-
-After a power loss or reboot, Windows can classify the Ethernet connection as
-`Public`. Windows Firewall can then block SMB access from the LAN even though
-the SMB service, share, and attached storage are healthy.
-
-If the trusted home-LAN Ethernet connection is incorrectly classified as
-`Public`, identify its interface index with `Get-NetConnectionProfile` and
-correct it:
+The command used for that type of change is:
 
 ```powershell
 Set-NetConnectionProfile -InterfaceIndex <index> -NetworkCategory Private
 ```
 
-Retest from Proxmox:
+The interface index must be taken from the current system configuration.
 
-```bash
-ping -c 3 192.168.1.208
-nc -nvz -w 3 192.168.1.208 445
-pvesm status
-pvesm list t-20-backup
-```
+I then retest TCP 445 and Proxmox storage access.
 
-Do not delete and recreate the Proxmox storage definition until network
-reachability, SMB service state, Windows firewall/profile state, and the remote
-share have been checked.
+This was a case where the storage hardware and share were healthy, but a Windows network setting prevented clients from reaching them.
 
-## Questions
+### Stale CIFS Mounts
 
-- Does Proxmox report the storage as active?
-- Can the host reach the storage server?
-- Is TCP 445 reachable?
-- Is the Windows SMB server service running?
-- Does the expected SMB share still exist?
-- Is the Windows Ethernet network profile `Private`?
-- Is the CIFS mount present?
-- Are credentials still valid?
-- Is the remote filesystem full?
-- Can Proxmox list existing backups?
+Another problem occurred after a Windows share was removed and recreated under the same name.
 
-## Stale CIFS Mount After Share Recreation
+A Proxmox node retained a stale CIFS mount.
 
-If a Windows SMB share is removed and later recreated under the same name, a
-Proxmox node may retain a stale kernel mount. Typical evidence includes:
+The error included:
 
 ```text
-ls: cannot access '/mnt/pve/t-20-backup': Stale file handle
+Stale file handle
 CIFS: VFS: reconnect tcon failed
 ```
 
-Confirm the mount state:
+I checked the mount:
 
 ```bash
 findmnt /mnt/pve/t-20-backup
 ```
 
-After confirming that no backup task is using the target, detach the stale
-mount on the affected node:
+Once I had confirmed that no backup task was using the share, the stale mount could be detached:
 
 ```bash
-umount /mnt/pve/t-20-backup
+sudo umount /mnt/pve/t-20-backup
 ```
 
-Then force Proxmox to access and reactivate the configured storage:
+I then checked whether Proxmox could access the configured storage again:
 
 ```bash
 pvesm list t-20-backup
 pvesm status
 ```
 
-Repeat the mount check on every cluster node because CIFS mounts are maintained
-per node even though the storage configuration is cluster-wide.
+Because each Proxmox host maintains its own mount state, an issue on one node doesn't necessarily mean the other nodes have the same problem.
 
-## Compressed Backup Write Failure
+### Backup Write Failures
 
-A destination-side interruption may appear at the end of a backup as:
+A backup can also fail when the destination becomes temporarily unavailable during a write.
 
-```text
-zstd: /*stdout*: Resource temporarily unavailable
-ERROR: Backup of VM <id> failed
-```
+One observed symptom involved a `zstd` write failure.
 
-Check the kernel log around the failure time:
+Useful kernel-log checks include:
 
 ```bash
-journalctl -k --since '<start-time>' --until '<end-time>' --no-pager |
+journalctl -k --since "1 hour ago" --no-pager |
     grep -Ei 'cifs|smb|error|disconnect|reconnect'
 ```
 
-If later backups completed and the storage remains active, verify which guest
-archive is absent and retry only that guest. Do not rerun the entire cluster job
-without first confirming the failed scope.
+I check whether other backups completed and which particular guest archive is missing before rerunning jobs.
 
-Concurrent jobs from multiple nodes can overload a Windows/USB-backed target.
-Prefer staggered per-node schedules when destination-side CIFS write errors
-appear under parallel load.
+The per-node backup schedules are staggered to reduce simultaneous writes against the storage system.
 
 ---
 
-# 13. Disk Space / Filesystem Incident
+## 10. Filesystem and Capacity Problems
 
-## Symptom
+One of my Wazuh installation attempts failed because Ubuntu's root filesystem didn't have the capacity I expected.
 
-Application errors, read-only indices, failed installations, or unexplained
-service failures.
+The virtual disk was large enough in Proxmox, but the operating system's LVM configuration hadn't allocated all of the available capacity.
 
-This is based on a real failure encountered during the Wazuh deployment.
-
-## Check Filesystem Utilization
+The initial checks were:
 
 ```bash
-df -h
 df -h /
-```
-
-## Check Block Devices
-
-```bash
 lsblk
-```
-
-## If LVM Is Used
-
-```bash
 sudo pvs
 sudo vgs
 sudo lvs
 ```
 
-A virtual disk can be large in the hypervisor while the guest root logical
-volume is much smaller.
+The error ultimately caused OpenSearch to cross its flood-stage disk threshold and put an index into read-only mode.
 
-That distinction caused the first Wazuh deployment to cross OpenSearch's
-flood-stage disk threshold.
-
-## Corrective Example
-
-When free extents are available in the volume group:
+Where unused extents were available in the volume group, I expanded the logical volume:
 
 ```bash
 sudo lvextend -l +100%FREE -r /dev/ubuntu-vg/ubuntu-lv
 ```
 
-Then verify:
+Then checked the filesystem again:
 
 ```bash
 df -h /
 ```
 
-The lesson is:
+The path and volume-group name are specific to that Ubuntu installation.
 
-> Verify capacity at the application-visible filesystem layer, not only at the
-> hypervisor virtual-disk layer.
+The broader point is to check the capacity available to the actual filesystem rather than relying on the virtual disk size shown in Proxmox.
 
 ---
 
-# 14. Linux Service Failure Runbook
+## 11. Linux Service Failures
 
-## Check Whether the Service Is Active
-
-```bash
-systemctl is-active <service>
-```
-
-## Inspect Detailed Status
+For systemd services, I start with their current state and logs.
 
 ```bash
-sudo systemctl status <service> --no-pager -l
+systemctl is-active SERVICE
+sudo systemctl status SERVICE --no-pager -l
+sudo journalctl -xeu SERVICE --no-pager
 ```
 
-## Inspect Recent Journal Entries
-
-```bash
-sudo journalctl -u <service> --since "30 minutes ago" --no-pager
-```
-
-For more detailed failure context:
-
-```bash
-sudo journalctl -xeu <service> --no-pager
-```
-
-## Example — Wazuh Indexer
-
-During the Wazuh build:
+For example, during a Wazuh indexer recovery attempt:
 
 ```bash
 sudo systemctl status wazuh-indexer --no-pager -l
 sudo journalctl -xeu wazuh-indexer.service --no-pager
 ```
 
-revealed a filesystem-permission problem involving:
+The journal showed:
 
 ```text
+java.nio.file.AccessDeniedException:
 /etc/wazuh-indexer/backup
 ```
 
-The service log—not repeated restarts—identified the actionable error.
+That was a permissions problem involving an indexer backup directory.
+
+Investigating the actual exception was more useful than repeatedly restarting the service without understanding why it failed.
 
 ---
 
-# 15. Wazuh Service Health Runbook
+## 12. Wazuh Service and Agent Health
 
 The main Wazuh services are:
 
-```text
-wazuh-indexer
-wazuh-manager
-filebeat
-wazuh-dashboard
-```
+- `wazuh-indexer`
+- `wazuh-manager`
+- `filebeat`
+- `wazuh-dashboard`
 
-Check them:
+On `wazuh01`, I can check them with:
 
 ```bash
 sudo systemctl is-active wazuh-indexer
@@ -894,582 +532,144 @@ sudo systemctl is-active filebeat
 sudo systemctl is-active wazuh-dashboard
 ```
 
-If one fails:
-
-1. inspect `systemctl status`;
-2. inspect that service's journal;
-3. check disk space;
-4. check memory;
-5. check dependent services;
-6. check expected listening ports;
-7. make one change;
-8. restart only what is necessary;
-9. validate dashboard and endpoint ingestion.
-
----
-
-# 16. Wazuh Agent / Endpoint Monitoring Failure
-
-## Symptom
-
-Endpoint disappears from Wazuh, shows inactive, or stops sending telemetry.
-
-On Linux:
+On a Linux endpoint:
 
 ```bash
 systemctl is-active wazuh-agent
 ```
 
-If inactive:
-
-```bash
-sudo systemctl status wazuh-agent --no-pager -l
-sudo journalctl -u wazuh-agent --since "30 minutes ago" --no-pager
-```
-
-Check connectivity to the manager:
+If the agent is running but appears inactive in Wazuh, I check connectivity to the manager.
 
 ```bash
 nc -zv 10.10.40.20 1514
 nc -zv 10.10.40.20 1515
 ```
 
-Then verify:
+Port 1514 is used for agent communication; 1515 is used for enrollment when needed.
 
-- agent service state;
-- network path;
-- DNS if hostname-based configuration is used;
-- manager address;
-- enrollment state;
-- endpoint clock/time;
-- manager service state.
+I then verify agent status and the arrival of fresh telemetry through the dashboard.
+
+A running agent and open TCP port don't necessarily mean the monitoring pipeline is healthy.
 
 ---
 
-# 17. Memory / Capacity Checks
+## 13. Cisco Switch Troubleshooting
 
-A slow or failing service can be caused by resource pressure.
+`sw01` is the Cisco SG350-10 at `192.168.1.21`.
 
-## Memory
+The documented trunk connections include:
 
-```bash
-free -h
-```
+| Port | Connection |
+|---|---|
+| Gi1 | `pve01` |
+| Gi2 | `pve02` |
+| Gi3 | `pve03` |
+| Gi4 | `pve04` |
+| Gi5 | UniFi `sw02` |
+| Gi8 | Flat-LAN uplink |
 
-## Disk
+When a VLAN guest loses connectivity, I check the Proxmox bridge and tag, switch port state, and VLAN membership.
 
-```bash
-df -h
-```
-
-## Proxmox Storage
-
-```bash
-pvesm status
-```
-
-## Cluster Resource View
-
-```bash
-pvesh get /cluster/resources --type vm
-```
-
-Questions:
-
-- Is memory exhausted?
-- Is swap heavily used?
-- Is a filesystem nearly full?
-- Is local-lvm near capacity?
-- Is one node carrying too many active guests?
-- Did an application fail because a resource threshold was crossed?
-
----
-
-# 18. Port and Service Reachability
-
-Use `nc` to separate a network problem from an application-port problem.
-
-Examples:
-
-```bash
-nc -vz 10.10.40.20 443
-nc -vz 10.10.40.20 1514
-nc -vz 10.10.40.20 1515
-nc -vz 192.168.1.189 3389
-```
-
-A successful TCP connection indicates that:
-
-- the destination is reachable;
-- the path permits the connection;
-- something is accepting the port.
-
-It does **not** necessarily prove the application is functioning correctly.
-
-For example:
-
-```text
-TCP 443 reachable
-```
-
-does not prove successful web authentication or correct application behavior.
-
----
-
-# 19. Cisco Managed Switch / Link Troubleshooting
-
-This section applies to the Cisco SG350-10 deployed as `sw01`. The Proxmox
-secondary Ethernet paths now connect to `sw01`; distinguish managed-switch problems from
-problems on the existing TRENDnet `vmbr0` management path.
-
-## Baseline State
-
-Verified switch baseline:
-
-```text
-Hostname:             sw01
-Management address:   192.168.1.21/24
-Active image:         2.5.9.55
-Inactive image:       2.5.0.83
-Current VLAN state:   VLANs 10-60 operational on the managed path
-Baseline config:      backed up before deployment
-```
-
-The original default-VLAN observation is historical. Current troubleshooting
-must include switch VLAN membership, Proxmox `vmbr1` tags, OPNsense source-
-interface policy, routing, and return-path behavior.
-
-## Check Switch Identity and Firmware
+Useful Cisco commands include:
 
 ```text
 show version
-```
-
-Confirm that the expected active image is present before troubleshooting a
-configuration-specific symptom.
-
-## Check VLAN Membership
-
-```text
 show vlan
 ```
 
-During the initial flat-network migration, an unexpected tagged/untagged state
-can isolate a device even when link lights are present.
+For link problems, I also inspect interface status and error counters.
 
-## Check the Physical Layer First
+If several hosts lose connectivity together, I look at shared components—particularly the uplink, switch, and upstream gateway—before troubleshooting each host independently.
 
-For a single failed link:
-
-1. Verify device power.
-2. Verify the cable is seated at both ends.
-3. Verify the `C##` cable label matches the intended endpoint.
-4. Verify the switch port matches the cabling record.
-5. Check link state and port counters at the switch.
-6. Test with a known-good cable before changing VLAN configuration.
-
-The accepted initial port convention reserves:
-
-```text
-Gi1  pve01
-Gi2  pve02
-Gi3  pve03
-Gi4  pve04
-Gi8  upstream / BGW320
-```
-
-Other endpoint ports should be recorded during the physical rebuild rather than
-assumed from memory.
-
-## If Multiple Lab Devices Fail at Once
-
-Prioritize shared dependencies:
-
-```text
-BGW320 / upstream
-      ↓
-sw01
-      ↓
-multiple lab endpoints
-```
-
-Check the upstream link, switch power, management reachability, and VLAN state
-before troubleshooting individual servers.
-
-## Rollback During Initial Deployment
-
-If the Cisco migration causes broad loss of connectivity before VLAN work has
-begun:
-
-1. stop making configuration changes;
-2. preserve the current `sw01` state;
-3. restore affected lab cables to the previously working TRENDnet path;
-4. verify `192.168.1.0/24` connectivity and DNS;
-5. review the physical/port map and switch configuration before retrying.
-
-The rollback goal is restoration of the known-good flat network, not completion
-of the managed-switch change at all costs.
+The managed network has evolved since the original flat-LAN switch migration, so historical port and VLAN configurations shouldn't be used as live state without checking.
 
 ---
 
-# 20. Dependency Mapping
+## 14. Service Restoration
 
-When a service fails, identify what it depends on.
+I don't consider an incident resolved simply because a process started.
 
-Example:
+I try to verify the complete function that originally failed.
 
-```text
-Wazuh dashboard
-      |
-      +--> wazuh-indexer
-      |
-      +--> wazuh-manager / data pipeline
-      |
-      +--> filesystem capacity
-      |
-      +--> network
-      |
-      +--> DNS
-```
+For DNS, that means more than `pihole status`. A client also needs to resolve names successfully.
 
-Example:
+For Wazuh, the dashboard must work, agents must be connected, and fresh events must arrive.
 
-```text
-Domain login
-      |
-      +--> Windows endpoint networking
-      |
-      +--> DNS
-      |
-      +--> dc01
-      |
-      +--> AD DS
-      |
-      +--> Kerberos / LDAP
-      |
-      +--> computer trust
-```
+For Proxmox, I need to confirm node connectivity, quorum, storage, and the relevant guests.
 
-Example:
+For a restored SMB backup share, I need to confirm that Proxmox can list or use the backup storage—not merely that the Windows file server is powered on.
 
-```text
-Proxmox backup
-      |
-      +--> Proxmox host
-      |
-      +--> guest state
-      |
-      +--> network path
-      |
-      +--> CIFS storage
-      |
-      +--> remote capacity
-```
-
-Dependency thinking prevents wasting time on unrelated components.
+This is especially important for services with several dependencies.
 
 ---
 
-# 21. Change One Thing
-
-Avoid troubleshooting by changing:
-
-- DNS,
-- gateway,
-- firewall,
-- service configuration,
-- package versions,
-- and host networking
-
-all at once.
-
-A better workflow is:
+## 15. Incident Notes Template
 
 ```text
-Observe
-  ↓
-Form hypothesis
-  ↓
-Test hypothesis
-  ↓
-Make one change
-  ↓
-Retest
-```
+Date / time:
+Affected system:
+Affected service:
+Reported symptom:
 
-If the change does not solve the problem, record that result before moving on.
-
-Negative results still narrow the problem.
-
----
-
-# 22. Service Restoration Verification
-
-A service is not considered restored simply because a daemon starts.
-
-Verification should occur at multiple layers.
-
-Example for DNS:
-
-```text
-pihole service active
-        +
-port 53 listening
-        +
-client can reach dns01
-        +
-client can resolve names
-        +
-normal Internet service works
-```
-
-Example for Wazuh:
-
-```text
-services active
-        +
-dashboard loads
-        +
-authentication succeeds
-        +
-agent active
-        +
-new telemetry arrives
-```
-
-Example for Proxmox:
-
-```text
-host reachable
-        +
-cluster membership correct
-        +
-quorum healthy
-        +
-storage active
-        +
-guest visible/running
-```
-
----
-
-# 23. Escalation / Handoff Template
-
-In a professional NOC, escalation should include useful evidence.
-
-```text
-Incident:
-Priority:
-Start Time:
-Affected Service:
-Affected Systems:
-User / Business Impact:
-
-What Was Confirmed:
-
-Checks Performed:
-
-Commands / Tests:
-
-Key Findings:
-
-Changes Made:
-
-Current State:
-
-Remaining Problem:
-
-Recommended Next Action:
-
-Evidence / Logs:
-```
-
-The objective is for the next person to continue the investigation without
-repeating the entire discovery process.
-
----
-
-# 24. Incident Notes Template
-
-```text
-Date / Time:
-System:
-Service:
-Reported Symptom:
-
-Expected State:
-
-Observed State:
+Expected behavior:
+Observed behavior:
 
 Scope:
-[ ] One host
-[ ] Multiple hosts
-[ ] One service
-[ ] Network-wide
-[ ] Unknown
+Recent changes:
 
-Network Checks:
-- Link:
-- IP:
-- Gateway:
+Network checks:
+- Interface:
+- Address:
+- Gateway / route:
 - DNS:
-- Port reachability:
+- Port:
 
-Service Checks:
+Service checks:
 - Service state:
-- Relevant logs:
+- Logs:
 
-Resource Checks:
+Storage and resources:
 - CPU:
 - Memory:
-- Disk:
-- Storage:
+- Filesystem:
+- Backup / storage:
 
-Dependencies Checked:
+Findings:
 
-Root Cause:
-
-Corrective Action:
+Change made:
 
 Validation:
 
-Final Status:
-
-Follow-Up:
+Root cause:
+Final status:
+Follow-up:
 ```
 
----
+If the root cause isn't established, I record that rather than substituting a guess.
 
-# 25. Useful Command Reference
-
-| Command | Purpose |
-|---|---|
-| `ip -br link` | Show interface/link state |
-| `ip -br addr` | Show addresses concisely |
-| `ip route` | Inspect routing/default gateway |
-| `ping` | Basic IP reachability test |
-| `nc -vz host port` | Test TCP port reachability |
-| `resolvectl status` | Inspect Linux resolver state |
-| `dig` / `nslookup` | Test DNS resolution |
-| `pihole status` | Check Pi-hole state |
-| `systemctl is-active` | Quick service-state check |
-| `systemctl status --no-pager -l` | Detailed service status |
-| `journalctl -u` | Service logs |
-| `journalctl -xeu` | Detailed systemd failure logs |
-| `free -h` | Memory and swap |
-| `df -h` | Filesystem usage |
-| `lsblk` | Block-device layout |
-| `pvs` / `vgs` / `lvs` | LVM state |
-| `qm list` | Proxmox VM inventory |
-| `pct list` | Proxmox LXC inventory |
-| `pvesm status` | Proxmox storage state |
-| `pvesm list` | Proxmox storage contents |
-| `pvecm status` | Cluster/quorum status |
-| `pvecm nodes` | Cluster membership |
-| `pvesh get /nodes` | Cluster node state |
-| `Test-ComputerSecureChannel` | Windows domain trust validation |
-| `Get-WinEvent` | Windows event-log investigation |
+For escalation or handoff, I also include the commands already run, relevant evidence, and what still needs investigation.
 
 ---
 
-# 26. Skills Demonstrated
+## Result
 
-This runbook supports hands-on experience with:
+This runbook brings together troubleshooting procedures I've used while building and operating the homelab.
 
-## Network Operations
+The main recurring problems have involved networking, DNS, storage, Proxmox, Windows services, and Linux applications.
 
-- Host availability troubleshooting
-- Service availability validation
-- IP addressing
-- Routing
-- DNS troubleshooting
-- TCP port validation
-- Dependency mapping
-- Incident prioritization
-- Operational escalation
-- Managed-switch baseline validation
-- Physical-link and switch-port troubleshooting
-- Flat-network rollback planning
+The most useful habit has been separating symptoms from causes.
 
-## Systems Administration
+A running host doesn't guarantee a working application. A permitted firewall rule doesn't guarantee a successful TCP session. An accessible SMB server doesn't guarantee that Proxmox can use the share.
 
-- Linux service management
-- systemd
-- journal analysis
-- filesystem capacity
-- LVM
-- VM and LXC administration
-- storage troubleshooting
-- Windows domain connectivity
+The objective is to verify the service from the perspective of the system that depends on it, and to document the evidence supporting the resolution.
 
-## Proxmox
+## Related Documentation
 
-- Node health
-- Cluster membership
-- Quorum
-- VM/LXC state
-- Local and shared storage
-- Cluster resource inspection
-- Backup infrastructure
-
-## Troubleshooting
-
-- Problem scoping
-- Layered diagnostics
-- Root-cause analysis
-- Controlled change
-- Service restoration
-- Post-change verification
-- Incident documentation
-
----
-
-# 27. Related Repository Documentation
-
-| Area | Document |
-|---|---|
-| Backup / recovery | [`01-proxmox-backup.md`](01-proxmox-backup.md) |
-| Asset / IP reference | [`02-asset-inventory.md`](02-asset-inventory.md) |
-| DNS migration | [`02-pihole-migration.md`](02-pihole-migration.md) |
-| Proxmox cluster | [`03-proxmox-cluster-build.md`](03-proxmox-cluster-build.md) |
-| Cisco switch / VLAN staging | [`04-network-vlans.md`](04-network-vlans.md) |
-| Physical infrastructure | [`18-physical-infrastructure.md`](18-physical-infrastructure.md) |
-| Shutdown / startup | [`19-shutdown-startup-runbook.md`](19-shutdown-startup-runbook.md) |
-| Cabling standard | [`20-cabling-standard.md`](20-cabling-standard.md) |
-| Wazuh deployment / troubleshooting | [`06-wazuh-siem.md`](06-wazuh-siem.md) |
-| Windows telemetry | [`08-windows-telemetry.md`](08-windows-telemetry.md) |
-| Active Directory | [`10-active-directory-lab.md`](10-active-directory-lab.md) |
-| SOC/NOC skills matrix | [`11-soc-noc-skills-matrix.md`](11-soc-noc-skills-matrix.md) |
-| SOC triage playbook | [`12-soc-alert-triage-playbook.md`](12-soc-alert-triage-playbook.md) |
-
----
-
-# 28. Summary
-
-The operational troubleshooting model used in this lab is:
-
-```text
-Confirm
-  ↓
-Scope
-  ↓
-Inspect
-  ↓
-Isolate
-  ↓
-Diagnose
-  ↓
-Change
-  ↓
-Retest
-  ↓
-Restore
-  ↓
-Verify
-  ↓
-Document
-```
-
-This approach is intended to resemble Tier 1 / junior NOC and infrastructure
-operations work: identify the affected layer quickly, preserve useful evidence,
-restore service safely, and leave clear notes for follow-up or escalation.
+- [Asset Inventory](02-asset-inventory.md)
+- [Pi-hole Migration](02-pihole-migration.md)
+- [Proxmox Cluster](03-proxmox-cluster-build.md)
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [OPNsense Routing and Firewalling](05-opnsense.md)
+- [Wazuh Deployment](06-wazuh-siem.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
