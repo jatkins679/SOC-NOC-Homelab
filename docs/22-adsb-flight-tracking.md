@@ -1,121 +1,159 @@
 # ADS-B Flight Tracking Receiver
 
-## Purpose
+## Overview
 
-ADS-B (Automatic Dependent Surveillance–Broadcast) is a system aircraft use to broadcast their position, altitude, speed, and other flight information. A receiver on the ground can pick up those radio transmissions and display nearby aircraft on a map. In my lab, a USB radio receives the signals, `readsb` decodes them, and the data is displayed locally and shared with flight-tracking services.
+One of the projects in my homelab is an ADS-B receiver that tracks aircraft flying nearby.
 
+ADS-B stands for *Automatic Dependent Surveillance–Broadcast*. Aircraft equipped with ADS-B transmit information about themselves over radio, including their position, altitude, speed, and identification.
 
-`adsb01` provides local ADS-B aircraft reception and feeds aircraft data to
-FlightAware and Flightradar24.
+A receiver on the ground can pick up those broadcasts without needing to contact the aircraft or request the information.
 
-The receiver was migrated from a Raspberry Pi 3 Model B to a Debian 13 virtual
-machine on the Proxmox cluster.
+The system uses a small USB software-defined radio and a computer to decode the signals. Software then displays the aircraft on a map and can share the information with flight-tracking networks.
 
-## Architecture
+I originally ran this on a Raspberry Pi 3 Model B.
+
+In August 2026, I migrated the receiver to a Debian virtual machine in my Proxmox cluster.
+
+The VM runs the receiver software, provides a local aircraft map, and shares data with FlightAware and Flightradar24.
+
+---
+
+## 1. How the System Works
+
+The main components are:
+
+- **RTL-SDR receiver:** Receives aircraft radio transmissions.
+- **readsb:** Decodes ADS-B messages into aircraft data.
+- **PiAware:** Sends decoded data to FlightAware.
+- **FR24feed:** Sends data to Flightradar24.
+- **tar1090:** Displays aircraft positions on a locally hosted map.
+
+The signal path is:
 
 ```text
-RTL2832U / R820T ADS-B receiver
-            |
-            | USB passthrough
-            v
-          pve03
-            |
-            v
-      adsb01 VM (103)
-            |
-          readsb
-         /      \
-        /        \
- TCP 30005      TCP 30002
-      |              |
-      v              v
-   PiAware        FR24feed
-      |              |
-      v              v
- FlightAware    Flightradar24
-
-          readsb
+Aircraft ADS-B transmissions
              |
              v
-          tar1090
+       RTL-SDR receiver
+             |
+       USB passthrough
              |
              v
-     Local aircraft map
+      Proxmox node pve03
+             |
+             v
+      adsb01 Debian VM
+             |
+             v
+           readsb
+          /  |   \
+         /   |    \
+        v    v     v
+   PiAware FR24  tar1090
+      |      |      |
+      v      v      v
+ FlightAware FR24  Local map
 ```
 
-## VM Details
+The important design choice is that `readsb` controls the physical receiver.
 
-| Item | Value |
-| --- | --- |
+The other programs use decoded data from `readsb` rather than attempting to open the same USB radio independently.
+
+---
+
+## 2. Virtual Machine Configuration
+
+The receiver runs as `adsb01`, VMID 103, on `pve03`.
+
+| Item | Configuration |
+|---|---|
 | Proxmox node | `pve03` |
-| VM ID | `103` |
+| VMID | 103 |
 | Hostname | `adsb01` |
-| IPv4 address | `192.168.1.246` |
-| Address assignment | DHCP fixed allocation |
-| Operating system | Debian GNU/Linux 13 (Trixie) |
+| Recorded IP | `192.168.1.246` |
+| Operating system | Debian 13 (Trixie) |
 | Architecture | amd64 |
 | vCPU | 2 |
-| Memory | 2048 MiB |
+| RAM | 2 GiB |
 | Disk | 16 GiB |
-| Network | VirtIO on `vmbr0` |
+| Networking | VirtIO on `vmbr0` |
 | QEMU Guest Agent | Enabled |
 
-## ADS-B Receiver
+The recorded address was provided by a fixed DHCP allocation.
 
-The physical ADS-B receiver is attached to `pve03` and passed through to
-VM 103.
+The radio receiver is physically connected to `pve03`, so the VM depends on that host for its USB device.
 
-| Item | Value |
-| --- | --- |
-| USB vendor/product ID | `0bda:2832` |
-| USB device | Realtek RTL2832U DVB-T |
+---
+
+## 3. RTL-SDR USB Receiver
+
+The ADS-B receiver uses a Realtek RTL2832U device with an R820T tuner.
+
+The recorded device details are:
+
+| Field | Value |
+|---|---|
+| USB ID | `0bda:2832` |
 | Tuner | Rafael Micro R820T |
 | RTL-SDR serial | `00001000` |
-| Proxmox passthrough | `usb0: host=0bda:2832` |
+| Proxmox configuration | `usb0: host=0bda:2832` |
 
-Verify on `pve03`:
+On `pve03`, I can check whether Linux detects the USB receiver:
 
 ```bash
 lsusb | grep 0bda:2832
+```
+
+I can also check whether it is assigned to VM 103:
+
+```bash
 qm config 103 | grep usb
 ```
 
-Verify inside `adsb01`:
+Inside `adsb01`, I verify that the USB device is visible:
 
 ```bash
 lsusb | grep 0bda:2832
 ```
 
-## readsb
+If the receiver disappears after maintenance or a reboot, these checks help separate USB passthrough problems from issues with the decoding software.
 
-`readsb` owns the RTL-SDR and performs ADS-B decoding.
+---
 
-Version installed during migration:
+## 4. readsb
+
+`readsb` receives and decodes the aircraft transmissions.
+
+The version recorded during the migration was:
 
 ```text
 readsb 3.16.16
 ```
 
-Network interfaces used by the flight-tracking stack:
+It provides decoded messages to the other services over local TCP ports.
 
-| Port | Format | Purpose |
-| --- | --- | --- |
-| `30002/tcp` | Raw / AVR | FR24feed input |
-| `30003/tcp` | SBS / BaseStation | Local/testing output |
-| `30005/tcp` | Beast | PiAware input |
-| `30004/tcp` | Beast | readsb input |
-| `30104/tcp` | Beast | MLAT return input |
+| Port | Data format | Purpose |
+|---|---|---|
+| 30002 | Raw / AVR | FR24feed input |
+| 30003 | SBS / BaseStation | Local output |
+| 30004 | Beast | Input |
+| 30005 | Beast | PiAware input |
+| 30104 | Beast | MLAT return input |
 
-Check the service:
+To check the service:
 
 ```bash
 systemctl status readsb --no-pager
 ```
 
-Check current aircraft reception:
+### Checking Aircraft Reception
+
+`readsb` maintains a JSON file containing recently received aircraft information.
+
+On `adsb01`:
 
 ```bash
-python3 - <<'PY2'
+python3 - <<'PY'
 import json
 
 with open("/run/readsb/aircraft.json") as f:
@@ -123,23 +161,30 @@ with open("/run/readsb/aircraft.json") as f:
 
 print("Messages:", data.get("messages"))
 print("Aircraft:", len(data.get("aircraft", [])))
-PY2
+PY
 ```
 
-## FlightAware / PiAware
+This is useful for confirming that the receiver is actually decoding aircraft messages.
 
-PiAware was built from the FlightAware PiAware builder for Debian 13 amd64.
+A running `readsb` service alone doesn't guarantee that the antenna, USB receiver, or radio reception is working.
 
-Version installed during migration:
+---
+
+## 5. FlightAware and PiAware
+
+PiAware forwards aircraft data to FlightAware.
+
+During migration, I built PiAware for Debian 13 amd64 using the FlightAware builder.
+
+The recorded version was:
 
 ```text
 PiAware 11.1
 ```
 
-PiAware does not access the RTL-SDR directly. It consumes Beast-format data
-from readsb.
+PiAware receives Beast-format data from `readsb` on localhost.
 
-Configuration:
+The documented configuration is:
 
 ```text
 receiver-type = other
@@ -148,9 +193,11 @@ receiver-port = 30005
 allow-mlat = yes
 ```
 
-The existing FlightAware feeder identity was retained during migration.
+I retained the existing FlightAware feeder identity during migration rather than registering it as a completely new receiver.
 
-Useful commands:
+### Verification
+
+Useful commands include:
 
 ```bash
 piaware-status
@@ -158,31 +205,37 @@ piaware-config -showall
 journalctl -u piaware -n 50 --no-pager
 ```
 
-### MLAT
-
-MLAT is enabled locally. PiAware starts `fa-mlat-client` when FlightAware
-requests multilateration participation.
-
-Verify:
+I also check MLAT configuration:
 
 ```bash
 piaware-config -show allow-mlat
-piaware-status
-journalctl -u piaware --since "1 hour ago" --no-pager | grep -Ei 'mlat|multilateration'
 ```
 
-## Flightradar24
+### What MLAT Does
 
-Version installed during migration:
+MLAT stands for *multilateration*.
+
+It can help locate aircraft using the timing of radio signals received by multiple ground stations.
+
+This is particularly useful for aircraft that transmit signals without including their own GPS-derived position.
+
+Participation depends on the receiver network and the availability of suitable aircraft signals.
+
+---
+
+## 6. Flightradar24
+
+FR24feed forwards decoded aircraft data to Flightradar24.
+
+The version installed during migration was:
 
 ```text
 FR24feed 1.0.57-1
 ```
 
-FR24feed consumes AVR data from readsb instead of accessing the RTL-SDR
-directly.
+The working configuration uses an AVR TCP feed from `readsb`.
 
-The working `/etc/fr24feed.ini` configuration uses:
+The relevant section of `/etc/fr24feed.ini` is:
 
 ```ini
 receiver="avr-tcp"
@@ -193,67 +246,82 @@ mlat="no"
 mlat-without-gps="no"
 ```
 
-The FR24 sharing key is stored locally and is intentionally not recorded in
-this repository.
+The FR24 sharing key is stored locally and is not included in the repository.
 
-Check the feeder:
+### Checking the Service
 
 ```bash
 systemctl status fr24feed --no-pager
 journalctl -u fr24feed -n 40 --no-pager
 ```
 
-Expected startup messages include:
+The migration logs recorded a successful connection to the local receiver and an active upload connection.
 
-```text
-Connecting to AVR-TCP receiver via (avr-tcp://127.0.0.1:30002)
-Connected to the receiver
-Configured, processing messages
-connected via UDP
-working
-```
-
-Local FR24 status interface:
+The local FR24 status page was available at:
 
 ```text
 http://192.168.1.246:8754/
 ```
 
-### FR24 Web Configuration Warning
+### A Configuration Problem I Encountered
 
-Do not use the FR24 web settings page to change receiver configuration on
-`adsb01`.
+During the migration, I used the FR24 web settings interface to save receiver settings.
 
-During migration, saving settings through the web interface replaced the
-working `avr-tcp` configuration with `dvbt`. Manage `/etc/fr24feed.ini`
-directly from the shell instead.
+That replaced the working `avr-tcp` configuration with `dvbt`.
 
-## tar1090
+The change was inappropriate for this arrangement because `readsb`, not FR24feed, was supposed to control the physical receiver.
 
-tar1090 provides the local aircraft map using JSON generated by readsb.
+I restored the working configuration in `/etc/fr24feed.ini`.
 
-Services:
+Since then, I prefer to manage this part of the FR24 configuration directly from the shell.
+
+This keeps the architecture clear: one program owns the USB radio, and the other services consume its decoded output.
+
+---
+
+## 7. Local Aircraft Map
+
+I use `tar1090` to display nearby aircraft on a local map.
+
+It consumes the decoded aircraft data provided by `readsb` and serves a browser-based interface.
+
+The relevant services are:
 
 ```bash
 systemctl status tar1090 --no-pager
 systemctl status lighttpd --no-pager
 ```
 
-Local aircraft map:
+The documented URL is:
 
 ```text
 http://192.168.1.246/tar1090/
 ```
 
-Verify locally:
+From inside the VM, I can check the HTTP response:
 
 ```bash
 curl -I http://127.0.0.1/tar1090/
 ```
 
-## Service Health Check
+The map is useful for confirming aircraft reception visually.
 
-These services should all report `active`:
+It also makes the project more interesting than simply sending data to an external service.
+
+---
+
+## 8. Service Health Checks
+
+The main services are:
+
+- `readsb`
+- `piaware`
+- `fr24feed`
+- `tar1090`
+- `lighttpd`
+- `qemu-guest-agent`
+
+I can check them together:
 
 ```bash
 systemctl is-active \
@@ -265,28 +333,25 @@ systemctl is-active \
   qemu-guest-agent
 ```
 
-Expected result:
+The expected healthy state is `active` for each required service.
 
-```text
-active
-active
-active
-active
-active
-active
-```
-
-Check network listeners:
+I also inspect the listeners:
 
 ```bash
 sudo ss -lntp | grep -E ':80|:30002|:30003|:30005|:8754'
 ```
 
-## Reboot Validation
+For complete validation, I want to see more than active processes.
 
-The ADS-B stack was tested through a complete VM reboot.
+I also check that `readsb` is receiving messages, the map works, and both external feeding services are connected.
 
-After reboot, verify:
+---
+
+## 9. Reboot Validation
+
+After the migration, I performed a complete VM reboot and checked whether the receiver and services returned automatically.
+
+The verification included:
 
 ```bash
 systemctl is-active readsb piaware fr24feed tar1090 lighttpd qemu-guest-agent
@@ -298,32 +363,57 @@ piaware-status
 journalctl -u fr24feed -n 15 --no-pager
 ```
 
-The RTL-SDR USB passthrough and all core services successfully returned after
-the reboot.
+The RTL-SDR remained available through USB passthrough, and the core services restarted successfully.
 
-## Monitoring
+This mattered because a receiver that works only until its next reboot isn't particularly useful as an unattended service.
 
-Recommended Uptime Kuma monitors:
+---
+
+## 10. Monitoring
+
+The original monitoring plan included these Uptime Kuma checks:
 
 | Monitor | Type | Target |
-| --- | --- | --- |
-| `adsb01 - Host` | Ping | `192.168.1.246` |
-| `adsb01 - readsb Beast` | TCP Port | `192.168.1.246:30005` |
-| `adsb01 - tar1090` | HTTP(s) | `http://192.168.1.246/tar1090/` |
-| `adsb01 - FR24feed` | HTTP(s) | `http://192.168.1.246:8754/` |
+|---|---|---|
+| `adsb01` host | Ping | `192.168.1.246` |
+| `readsb` Beast feed | TCP | `192.168.1.246:30005` |
+| `tar1090` map | HTTP | `http://192.168.1.246/tar1090/` |
+| FR24feed status | HTTP | `http://192.168.1.246:8754/` |
 
-## Operational Dependency
+These checks cover reachability and basic service availability.
 
-Because the RTL-SDR is physically attached to `pve03`, normal operation of
-`adsb01` depends on that Proxmox node being online.
+Actual aircraft-message reception and successful external data feeding still require application-level checks.
 
-Migrating VM 103 to another Proxmox node would also require moving the physical
-USB receiver or otherwise changing the receiver architecture.
+---
 
-## Previous Raspberry Pi Receiver
+## 11. Operational Dependencies
 
-The previous Raspberry Pi 3 Model B ADS-B receiver is no longer required for
-FlightAware or Flightradar24 feeding.
+The physical receiver remains attached to `pve03`.
 
-It should remain powered off until the VM-based receiver has demonstrated
-stable operation, after which the Raspberry Pi can be repurposed.
+That creates a hardware dependency that isn't present for ordinary Proxmox virtual machines.
+
+Moving `adsb01` to another node would require moving the USB receiver or redesigning how the radio data reaches the VM.
+
+This is one reason I document USB passthrough separately from the rest of the VM configuration.
+
+The former Raspberry Pi 3 receiver can be repurposed once the VM-based installation is operating reliably.
+
+---
+
+## Result
+
+The ADS-B receiver was successfully migrated from a Raspberry Pi to a Debian VM running under Proxmox.
+
+The migration preserved the existing aircraft-data feeds, added the receiver to the virtualization environment, and provided a locally hosted aircraft map.
+
+I also tested USB passthrough, service startup, and operation after reboot.
+
+The FR24 configuration issue was a useful reminder that several applications may participate in one data pipeline, but they shouldn't all attempt to control the same hardware.
+
+This remains one of the more enjoyable services in the lab because it combines radio reception, Linux administration, virtualization, networking, and a practical way to visualize the data.
+
+## Related Documentation
+
+- [Proxmox Cluster Build](03-proxmox-cluster-build.md)
+- [Asset Inventory](02-asset-inventory.md)
+- [Homelab Operations Checklist](15-homelab-operations-checklist.md)
