@@ -2,128 +2,72 @@
 
 ## Overview
 
-This lab adds Microsoft Active Directory Domain Services (AD DS) to the SOC/NOC
-homelab so Windows identity, authentication, domain administration, and security
-monitoring can be practiced in an environment that resembles a small enterprise
-network.
+I added Active Directory to the homelab to get more experience with Windows domain administration, authentication, DNS, and security monitoring.
 
-The Active Directory environment is integrated with the broader security lab,
-including a domain-joined Windows 11 endpoint and Wazuh SIEM monitoring.
+Until this point, most of my work had involved Linux systems, Proxmox, networking, and Wazuh. I wanted to add a Windows domain and see how identity-management events could be collected and investigated through the SIEM.
 
-## Lab Objectives
+I deployed Windows Server 2025 as a domain controller, created the `corp.home.arpa` domain, joined a Windows 11 workstation, and used test account-management activity to generate security events.
 
-The goals of this phase were to:
-
-- Deploy an Active Directory domain controller.
-- Configure Active Directory-integrated DNS.
-- Create a new forest and domain.
-- Join a Windows 11 workstation to the domain.
-- Verify DNS-based domain discovery.
-- Validate the workstation's secure channel to the domain.
-- Inspect and understand the domain password policy.
-- Create, disable, and delete test domain accounts.
-- Generate Windows Security events associated with account administration.
-- Ingest relevant Windows events into Wazuh.
-- Validate that account-management activity produces actionable SIEM alerts.
-- Document the administrative and troubleshooting workflow.
-
-## Environment
-
-| System | Role | Address / Name |
-|---|---|---|
-| `dc01` | Active Directory Domain Controller / DNS | `10.10.20.10` |
-| `dc01.corp.home.arpa` | Domain controller FQDN | `corp.home.arpa` |
-| `win11-01` | Domain-joined Windows 11 workstation | DHCP / lab LAN |
-| `wazuh01` | Wazuh SIEM | `10.10.40.20` |
-| `CORP` | NetBIOS domain name | `corp.home.arpa` |
-
-The Active Directory DNS domain is:
-
-```text
-corp.home.arpa
-```
-
-The NetBIOS domain name is:
-
-```text
-CORP
-```
-
-## Architecture
-
-```text
-                         SOC/NOC Homelab
-                               |
-                        192.168.1.0/24
-                               |
-               +---------------+---------------+
-               |                               |
-            dc01                           wazuh01
-        10.10.20.10                    10.10.40.20
-      Active Directory                    Wazuh
-      DNS / Kerberos                       SIEM
-               |
-               |
-          corp.home.arpa
-               |
-               |
-           win11-01
-       Windows 11 endpoint
-               |
-        Wazuh + Sysmon
-```
-
-This arrangement allows identity-management actions on the domain to be
-observed from both an administrator and a security-operations perspective.
+I then verified that Wazuh detected the creation of an Active Directory account.
 
 ---
 
-## 1. Installing Active Directory Domain Services
+## 1. Lab Environment
 
-The domain controller was configured with the Active Directory Domain Services
-role and the associated management tools.
+| System | IP address | Purpose |
+|---|---|---|
+| `dc01` | `10.10.20.10` | Domain controller and DNS |
+| `win11-01` | `10.10.30.160` | Domain-joined Windows 11 endpoint |
+| `wazuh01` | `10.10.40.20` | Security monitoring |
 
-Example PowerShell installation:
+The domain configuration is:
+
+```text
+DNS domain:        corp.home.arpa
+NetBIOS domain:    CORP
+Domain controller: dc01.corp.home.arpa
+Operating system:  Windows Server 2025
+```
+
+`dc01` runs on VLAN 20, while `win11-01` is on VLAN 30.
+
+OPNsense handles permitted traffic between the networks.
+
+---
+
+## 2. Installing Active Directory Domain Services
+
+I installed the Active Directory Domain Services role and the associated administration tools on `dc01`.
+
+The PowerShell command for that configuration is:
 
 ```powershell
 Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
 ```
 
-The installed role can be verified with:
+The installed role can be checked with:
 
 ```powershell
 Get-WindowsFeature AD-Domain-Services
 ```
 
-**Purpose:** Confirm that the AD DS server role and management components are
-installed before attempting to promote the server to a domain controller.
+After the role was installed, I promoted the server to a domain controller and created a new forest.
+
+The resulting domain was:
+
+`corp.home.arpa`
+
+With the NetBIOS name:
+
+`CORP`
+
+The original documentation doesn't preserve the exact promotion command, so I'm not including a reconstructed command as though it came from the deployment session.
 
 ---
 
-## 2. Creating the Domain
+## 3. Validating the Domain
 
-The lab domain was created as:
-
-```text
-corp.home.arpa
-```
-
-with the NetBIOS name:
-
-```text
-CORP
-```
-
-The domain controller is:
-
-```text
-dc01.corp.home.arpa
-```
-
-After promotion, the server was restarted and Active Directory services were
-validated.
-
-Useful verification commands include:
+After promotion and restart, I checked the Active Directory configuration using:
 
 ```powershell
 Get-ADDomain
@@ -131,105 +75,96 @@ Get-ADForest
 Get-ADDomainController
 ```
 
-During validation, `Get-ADDomain` / `Get-ADForest` reported the domain and forest
-functional levels as:
+The results confirmed that the domain and forest existed and that the domain controller was available.
+
+The recorded functional levels were:
 
 ```text
-Windows2025Domain
-Windows2025Forest
+Domain functional level: Windows2025Domain
+Forest functional level: Windows2025Forest
 ```
 
-These commands provide information about the domain, forest, domain controller,
-FSMO role ownership, and functional levels.
+These commands also provide information about domain identity, forest configuration, and FSMO role ownership.
+
+At this stage, I had a functioning domain controller and could begin connecting Windows clients.
 
 ---
 
-## 3. DNS Configuration
+## 4. Active Directory DNS
 
-Active Directory depends heavily on DNS. The domain controller provides DNS for
-the `corp.home.arpa` domain and domain clients use the domain controller for
-Active Directory name resolution and service discovery.
+DNS is central to Active Directory operation.
 
-The domain controller uses:
+Windows clients need to find services such as domain controllers, LDAP, and Kerberos.
 
-```text
-10.10.20.10
-```
+I configured the Windows 11 workstation to use `dc01` (`10.10.20.10`) for Active Directory DNS.
 
-The Windows 11 domain workstation was configured to use:
-
-```text
-10.10.20.10
-```
-
-as its DNS server.
-
-This is important because Active Directory clients locate services such as LDAP
-and Kerberos through DNS SRV records.
-
-Useful validation commands include:
+Useful checks include:
 
 ```powershell
 Resolve-DnsName corp.home.arpa
 Resolve-DnsName dc01.corp.home.arpa
+```
+
+To check domain-controller service discovery:
+
+```powershell
 Resolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.corp.home.arpa
 Resolve-DnsName -Type SRV _kerberos._tcp.corp.home.arpa
 ```
 
-**SOC/NOC relevance:** DNS problems can appear to be authentication,
-workstation, or domain-controller failures. Verifying DNS is therefore one of
-the first troubleshooting steps for Active Directory connectivity.
+The SRV records help clients locate the services required for domain operations.
+
+This is an important distinction from the Pi-hole server I use for general home-network DNS.
+
+For the domain-joined Windows systems, Active Directory DNS must be available for normal domain discovery and authentication.
+
+A DNS problem can easily appear to be a domain-controller or Windows authentication problem.
 
 ---
 
-## 4. Joining `win11-01` to the Domain
+## 5. Joining Windows 11 to the Domain
 
-The Windows 11 test workstation was joined to:
+I joined `win11-01` to:
 
-```text
-corp.home.arpa
-```
+`corp.home.arpa`
 
-After the join and reboot, domain membership was validated.
-
-Examples:
+After restarting the workstation, I checked its domain membership:
 
 ```powershell
 Get-CimInstance Win32_ComputerSystem |
     Select-Object Name, Domain, PartOfDomain
 ```
 
-The secure channel between the workstation and the domain was tested with:
+I also checked the secure channel:
 
 ```powershell
 Test-ComputerSecureChannel
 ```
 
-Expected result:
+The test returned:
 
 ```text
 True
 ```
 
-A successful secure-channel test demonstrates that the workstation can
-authenticate to the domain and that the computer account relationship is
-healthy.
+This confirmed that the workstation's trust relationship with the domain was functioning.
 
-Additional domain discovery can be tested with:
+Additional diagnostic commands include:
 
 ```powershell
 nltest /dsgetdc:corp.home.arpa
 nltest /sc_verify:corp.home.arpa
 ```
 
-These commands help diagnose domain-controller discovery and workstation trust
-problems.
+These are useful when investigating domain-controller discovery and secure-channel problems.
+
+With the workstation joined, I had a Windows endpoint capable of producing both local security events and domain-related activity.
 
 ---
 
-## 5. Inspecting the Domain Password Policy
+## 6. Inspecting the Password Policy
 
-Before creating a test account, the domain password policy was inspected:
+Before creating test accounts, I checked the domain's default password policy.
 
 ```powershell
 Get-ADDefaultDomainPasswordPolicy |
@@ -240,21 +175,25 @@ Select-Object MinPasswordLength,
               MaxPasswordAge
 ```
 
-Observed policy:
+The recorded policy was:
 
-```text
-MinPasswordLength    : 7
-ComplexityEnabled    : True
-PasswordHistoryCount : 24
-MinPasswordAge       : 1.00:00:00
-MaxPasswordAge       : 42.00:00:00
-```
+| Setting | Observed value |
+|---|---|
+| Minimum password length | 7 |
+| Complexity enabled | True |
+| Password history | 24 |
+| Minimum password age | 1 day |
+| Maximum password age | 42 days |
 
-The first attempt to create a test account encountered password-policy
-enforcement. A new compliant password was supplied and the account password was
-reset successfully.
+These were the observed lab settings, not recommendations for a new production password policy.
 
-Example:
+### Password-Policy Troubleshooting
+
+My first attempt to configure the test account's password ran into password-policy enforcement.
+
+I supplied a new compliant password and reset the account password.
+
+The documented PowerShell commands were:
 
 ```powershell
 $pw = Read-Host "Enter a NEW compliant password for soc-lab-user" -AsSecureString
@@ -265,66 +204,44 @@ Set-ADAccountPassword `
     -NewPassword $pw
 ```
 
-**Why this matters:** Password policies are an important identity-security
-control. Administrators and security analysts need to understand both how the
-policy is configured and how failed administrative actions appear in system
-logs.
+The process was useful because it showed the practical effect of the domain password policy during account administration.
+
+It also provided another example of why checking configuration and understanding the actual error is better than repeatedly attempting the same operation.
 
 ---
 
-## 6. Creating a Test Domain Account
+## 7. Creating a Test Domain Account
 
-A test account named:
+I used a test account named:
 
-```text
-soc-lab-user
-```
+`soc-lab-user`
 
-was used to generate controlled Active Directory account-management telemetry.
+The purpose was to generate account-management activity and follow the resulting security event through Windows and Wazuh.
 
-The purpose was not simply to create a user. The exercise connected an
-administrative action to:
-
-1. Active Directory state
-2. Windows Security logging
-3. Wazuh ingestion
-4. SIEM rule matching
-5. MITRE ATT&CK context
-
-The account can be inspected with:
+I checked the account using:
 
 ```powershell
 Get-ADUser soc-lab-user -Properties *
 ```
 
-A more concise query is:
+For a shorter view of the relevant attributes:
 
 ```powershell
 Get-ADUser soc-lab-user |
 Select-Object Name, SamAccountName, Enabled, DistinguishedName
 ```
 
+These commands provide information about the account's identity, enabled state, and location in Active Directory.
+
 ---
 
-## 7. Active Directory Security Event: User Creation
+## 8. Windows Security Event 4720
 
-Creating the test account generated Windows Security Event ID:
+Creating the test user generated Windows Security Event ID `4720`.
 
-```text
-4720
-```
+The event indicates that a user account was created.
 
-Event 4720 means:
-
-```text
-A user account was created.
-```
-
-This is a useful security event because unexpected account creation can indicate
-unauthorized persistence, compromised administrator credentials, or malicious
-identity manipulation.
-
-The event can be queried directly on the domain controller:
+I checked the domain controller's Security log:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{
@@ -333,7 +250,7 @@ Get-WinEvent -FilterHashtable @{
 } -MaxEvents 10
 ```
 
-A more targeted search can inspect the rendered event text:
+To find events associated with the test account:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{
@@ -344,244 +261,134 @@ Where-Object { $_.Message -match 'soc-lab-user' } |
 Select-Object TimeCreated, Id, ProviderName, Message
 ```
 
+This allowed me to examine the original Windows evidence rather than relying entirely on what Wazuh displayed.
+
 ---
 
-## 8. Wazuh Detection of the AD Account Creation
+## 9. Wazuh Detection
 
-The Windows account-creation event was successfully ingested and detected by
-Wazuh.
+The account-creation event was successfully collected and detected by Wazuh.
 
-Observed detection:
+The recorded alert included:
+
+| Field | Value |
+|---|---|
+| Windows Event ID | `4720` |
+| Wazuh rule | `60109` |
+| Rule level | 8 |
+| MITRE ATT&CK | `T1098` — Account Manipulation |
+| Tactic | Persistence |
+
+The telemetry path was:
 
 ```text
-Windows Security Event ID : 4720
-Wazuh rule                : 60109
-Rule level                : 8
-MITRE ATT&CK              : T1098 - Account Manipulation
-Tactic                    : Persistence
-```
-
-This validates the complete telemetry path:
-
-```text
-Active Directory administrative action
-               |
-               v
-Windows Security Event Log
-               |
-               v
-Wazuh agent / Windows event collection
-               |
-               v
-Wazuh manager
-               |
-               v
+Active Directory account creation
+              |
+              v
+Windows Security Event 4720
+              |
+              v
+Wazuh Windows event collection
+              |
+              v
+Wazuh manager — wazuh01
+              |
+              v
 Rule 60109
-               |
-               v
-Security alert / investigation
+              |
+              v
+Security alert
 ```
 
-This is a key SOC exercise because the lab is not only generating events; it is
-demonstrating that endpoint/domain telemetry reaches a SIEM and produces a
-security-relevant alert.
+This was the part I was particularly interested in.
+
+I had performed a known administrative action, confirmed the event in Windows, and then located the corresponding Wazuh detection.
+
+The alert showed that domain account-management events could be collected and used for SOC investigation.
 
 ---
 
-## 9. Disabling and Deleting the Test Account
+## 10. Disabling and Deleting Accounts
 
-Additional identity lifecycle actions were performed against the test user.
+I also worked through additional account lifecycle operations.
 
-The account can be disabled with:
+### Disable an Account
 
 ```powershell
 Disable-ADAccount -Identity "soc-lab-user"
 ```
 
-The account state can be verified with:
+The account's state can be checked with:
 
 ```powershell
 Get-ADUser soc-lab-user |
 Select-Object Name, SamAccountName, Enabled
 ```
 
-Disabling a user account generates Windows Security Event ID:
+Disabling an account can generate Windows Security Event ID `4725`.
 
-```text
-4725
-```
-
-The test account can later be removed with:
+### Delete an Account
 
 ```powershell
 Remove-ADUser -Identity "soc-lab-user"
 ```
 
-Deletion of a user account generates Windows Security Event ID:
+Account deletion can generate Windows Security Event ID `4726`.
 
-```text
-4726
-```
+The key account-management events are:
 
-These events are useful for identity lifecycle monitoring and for investigating
-unexpected administrative changes.
+| Event ID | Meaning |
+|---|---|
+| `4720` | User account created |
+| `4725` | User account disabled |
+| `4726` | User account deleted |
 
----
-
-## 10. Event IDs Used in the Lab
-
-| Event ID | Meaning | Security relevance |
-|---|---|---|
-| `4720` | User account created | Possible unauthorized account creation / persistence |
-| `4725` | User account disabled | Administrative or containment action; potentially malicious disruption |
-| `4726` | User account deleted | Account lifecycle event; possible evidence destruction or unauthorized change |
-
-Account-management events should be interpreted in context. A legitimate
-administrator may generate exactly the same Windows event IDs as an attacker.
-The analyst's task is to determine whether the action is expected and
-authorized.
+The documented Wazuh detection was the account-creation event. I'm not treating the other two event IDs as separately verified Wazuh alerts without matching evidence.
 
 ---
 
-## 11. Investigation Workflow
+## 11. Investigating an Account-Creation Alert
 
-The lab follows a simple SOC investigation process:
+A new account isn't automatically suspicious.
 
-```text
-Alert
-  |
-  v
-Identify event ID and rule
-  |
-  v
-Identify affected account
-  |
-  v
-Identify actor / administrator
-  |
-  v
-Confirm source system and timestamp
-  |
-  v
-Determine whether change was authorized
-  |
-  v
-Review related authentication/process activity
-  |
-  v
-Contain or remediate if necessary
-  |
-  v
-Document findings
-```
+An administrator may create accounts as part of normal operations.
 
-For an unexpected Event 4720, useful questions include:
+The important question is whether the activity was expected and authorized.
 
-- Who created the account?
-- When was it created?
-- From which system was the action performed?
-- Was the administrator expected to perform the action?
-- Was the new account added to any privileged groups?
-- Was there suspicious authentication activity immediately before the event?
-- Did PowerShell or another administrative tool launch near the same time?
-- Did the account subsequently log on?
-- Were other accounts created, modified, disabled, or deleted?
+For an unexpected account-creation event, I would investigate:
+
+- Which administrator created the account
+- When the account was created
+- Where the administrative activity originated
+- Whether the account was added to privileged groups
+- Whether it subsequently authenticated
+- Whether related accounts were created or modified
+- Whether suspicious PowerShell or other process activity occurred around the same time
+
+The Windows Security event establishes that an account-management action occurred. Other evidence is needed to determine its significance.
+
+This is the same general approach I used in the earlier Wazuh detection labs: verify the original event, examine the alert, and determine what else would be needed to understand the activity.
 
 ---
 
-## 12. Why Active Directory Matters to a SOC
+## 12. Result
 
-Active Directory is a high-value security-monitoring source because domain
-identity is central to many Windows enterprise environments.
+The Active Directory lab established a functioning Windows Server 2025 domain with a domain-joined Windows 11 workstation.
 
-An attacker with control of an Active Directory account may be able to:
+I verified domain and forest configuration, Active Directory DNS, and the workstation's secure channel.
 
-- Access additional systems.
-- Create persistence.
-- Change group memberships.
-- Reset passwords.
-- Disable legitimate users.
-- Create additional accounts.
-- Abuse administrative privileges.
-- Move laterally between systems.
+I also inspected password-policy enforcement and performed test account-management operations.
 
-For this reason, security monitoring commonly includes:
+The main security-monitoring result was detecting Windows Security Event 4720 through Wazuh Rule 60109.
 
-- Account creation
-- Account deletion
-- Account disablement
-- Password resets
-- Group-membership changes
-- Privileged logons
-- Failed logons
-- Kerberos activity
-- Domain-controller events
-- PowerShell and process telemetry
+This connected Active Directory administration with the broader SOC monitoring environment.
 
-The lab provides a controlled environment in which these behaviors can be
-generated and investigated without affecting a production organization.
+The next steps are to expand Windows identity monitoring to additional authentication and privilege-management events, and correlate that activity with Sysmon and PowerShell telemetry.
 
----
+## Related Documentation
 
-## 13. Skills Demonstrated
-
-This phase demonstrates hands-on experience with:
-
-### Windows / Active Directory
-
-- Active Directory Domain Services
-- Active Directory-integrated DNS
-- Domain controller administration
-- Domain and forest validation
-- Windows domain joins
-- LDAP/Kerberos service discovery
-- Computer secure-channel verification
-- Active Directory user administration
-- Domain password-policy inspection
-- PowerShell Active Directory cmdlets
-
-### Security Operations
-
-- Windows Security Event Logs
-- Identity and account-management telemetry
-- SIEM ingestion
-- Wazuh alert investigation
-- Security rule interpretation
-- MITRE ATT&CK mapping
-- Account Manipulation (`T1098`)
-- Security-event correlation
-- Detection validation
-
-### Troubleshooting
-
-- DNS verification
-- Domain-controller discovery
-- Domain trust validation
-- Password-policy troubleshooting
-- Event-log verification
-- End-to-end telemetry validation
-
----
-
-## 14. Result
-
-The Active Directory lab successfully established a functioning Windows domain
-and connected domain administration to the SOC monitoring stack.
-
-Validated results include:
-
-- `corp.home.arpa` domain operational.
-- `dc01.corp.home.arpa` functioning as the domain controller.
-- Active Directory DNS functioning.
-- `win11-01` successfully joined to the domain.
-- Workstation secure channel validated.
-- Domain password policy inspected and enforced.
-- Test account lifecycle activity generated.
-- Event 4720 generated for domain-user creation.
-- Active Directory account creation ingested by Wazuh.
-- Wazuh rule `60109` generated a level 8 alert.
-- Detection mapped to MITRE ATT&CK `T1098` Account Manipulation.
-
-The next phase is to expand Active Directory monitoring to additional
-authentication and privilege-management events and correlate those events with
-Sysmon and other Windows telemetry.
+- [Windows Endpoint Telemetry](08-windows-telemetry.md)
+- [Wazuh SIEM Deployment](06-wazuh-siem.md)
+- [Wazuh Attack Detection Labs](09-attack-detection-labs.md)
+- [SOC Alert Triage Playbook](12-soc-alert-triage-playbook.md)
+- [Managed Switching and VLANs](04-network-vlans.md)
