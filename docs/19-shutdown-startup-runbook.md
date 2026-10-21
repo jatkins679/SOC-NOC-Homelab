@@ -1,213 +1,275 @@
 # Homelab Shutdown and Startup Runbook
 
-## Purpose
+## Overview
 
-This runbook defines the controlled shutdown and startup process used when the
-homelab is intentionally taken fully offline for physical rearrangement,
-recabling, switch work, or other infrastructure maintenance.
+This runbook documents how I shut down and restart the homelab when maintenance requires taking multiple systems offline.
 
-For the current physical rebuild, the lab is powered down while the **AT&T fiber
-box/gateway remains powered**.
+The lab contains more dependencies than it did when I first started assembling it. Proxmox hosts run infrastructure services, the storage server provides shared backups, OPNsense routes between VLANs, and several Raspberry Pis provide DNS, remote access, and monitoring.
 
-The objective is to avoid treating a planned outage like an uncontrolled power
-loss and to verify dependencies in a deliberate order during recovery.
+Turning everything off and back on without considering those dependencies can create problems that look like system failures.
 
----
+The objective is to shut down workloads cleanly, preserve access to storage and network services as long as they're needed, and verify that everything returns to a working state.
 
-# 1. Change Scope
-
-## UPS Naming Convention
-
-```text
-UPS01  older of the two large UPS units
-UPS02  newer of the two large UPS units - APC SUA1000
-UPS03  small UPS / surge protector - APC BE850G2
-```
-
-These names are the canonical identifiers for power-distribution and future NUT
-shutdown policy. Earlier references that used `UPS02` for the small UPS are
-superseded; the small UPS is now `UPS03`.
+This procedure is intended for a planned full-lab shutdown. A normal Proxmox node update or individual service restart doesn't require taking down the entire environment.
 
 ---
 
-Typical work covered by this runbook:
+## 1. Important Dependencies
 
-- moving equipment between shelves;
-- replacing or reorganizing Ethernet cables;
-- connecting the Cisco SG350-10 (`sw01`);
-- moving power loads between `UPS01`, `UPS02`, and `UPS03` outputs;
-- securing small devices;
-- reorganizing storage peripherals;
-- documenting final physical layout.
+The main dependencies are:
+
+| System | Role | Dependency |
+|---|---|---|
+| AT&T gateway | Internet and original LAN gateway | Physical power and fiber connection |
+| `sw01`, `sw02` | Managed network switching | Power and uplinks |
+| `dns01` | Pi-hole DNS | Network switching |
+| `tailscale01` | Remote access | Internet connectivity and local network |
+| `util01` | UPS/NUT monitoring | Network and UPS communication |
+| `storage01` | Backup storage | Windows, Drobo, SMB, network |
+| `pve01`–`pve04` | Virtualization hosts | Power, management network |
+| `fw01` | OPNsense inter-VLAN routing | Proxmox host and VLAN networking |
+| `dc01` | Active Directory and DNS | Proxmox, network, OPNsense for routed access |
+| `docker` | Containerized applications | Proxmox, network |
+| `wazuh01`, `nms01`, `nb01` | Monitoring and infrastructure services | Proxmox and routed connectivity |
+
+I need to keep in mind that starting a Proxmox node doesn't automatically mean its guests or the services they provide are ready.
 
 ---
 
-# 2. Pre-Shutdown Checks
+## 2. UPS Identification
 
-Before powering anything down:
+The UPS naming convention is:
 
-- [ ] Confirm the planned outage window and scope.
-- [ ] Take current photographs of shelves, cable paths, and power connections.
-- [ ] Confirm both ends of Ethernet cables are labeled or can be positively identified.
-- [ ] Confirm the Proxmox cluster is quorate.
-- [ ] Confirm all expected VMs/LXCs are accounted for.
-- [ ] Confirm recent Proxmox backups exist on `t-20-backup`.
-- [ ] Confirm `storage01` / Drobo health and backup-target reachability.
-- [ ] Confirm the `sw01` baseline configuration backup is available.
-- [ ] Record any temporary DHCP addresses or unusual service state.
-- [ ] Keep the management Mac available for startup validation.
+| UPS | Identification |
+|---|---|
+| `UPS01` | Older large UPS |
+| `UPS02` | APC SUA1000 |
+| `UPS03` | APC BE850G2 |
 
-Useful Proxmox checks:
+The physical power distribution is documented separately.
+
+Before changing connections or performing a full shutdown, I want to identify which systems depend on each UPS rather than relying on the unit's name or assumed capacity.
+
+NUT monitoring through `util01` is part of the power-management arrangement.
+
+---
+
+## 3. Before Shutting Down
+
+I start with the cluster and storage state.
+
+On a Proxmox node:
 
 ```bash
 pvecm status
 pvesh get /nodes
-qm list
-pct list
 pvesm status
 ```
 
-Expected cluster baseline:
-
-```text
-Nodes:          4
-Expected votes: 4
-Total votes:    4
-Quorum:         3
-Quorate:        Yes
-```
-
----
-
-# 3. Controlled Shutdown Order
-
-The guiding rule is:
-
-```text
-Applications / guests
-        ↓
-Compute hosts
-        ↓
-Storage / support services
-        ↓
-Network equipment being moved
-```
-
-## Step 1 — Stop or Shut Down Workloads
-
-Gracefully shut down VMs and LXCs that will not remain online.
-
-Verify they are stopped rather than assuming the shutdown request completed.
+I also review which guests are running:
 
 ```bash
 qm list
 pct list
 ```
 
-## Step 2 — Shut Down Proxmox Nodes
+Before taking everything offline, I confirm that recent backups exist on `t-20-backup` and that storage isn't currently being written to by an active backup job.
 
-After guests are down, shut down the cluster nodes cleanly in the documented maintenance order:
+```bash
+pvesm list t-20-backup
+```
+
+For physical changes, I also photograph the current layout and identify cables and power connections.
+
+My pre-shutdown checklist is:
+
+- [ ] Confirm the maintenance scope.
+- [ ] Check cluster quorum and node status.
+- [ ] Identify running VMs and containers.
+- [ ] Verify relevant backups.
+- [ ] Confirm no backup or storage maintenance operation is active.
+- [ ] Review any unresolved hardware or service problems.
+- [ ] Record physical connections before moving equipment.
+- [ ] Keep a local management client available for startup checks.
+- [ ] Identify a rollback path if networking will change.
+
+For planned maintenance, I normally leave the AT&T fiber gateway powered unless the work specifically requires shutting it down.
+
+---
+
+## 4. Controlled Shutdown
+
+The shutdown order follows the direction of dependencies:
+
+```text
+Applications and test workloads
+               |
+               v
+Monitoring and infrastructure guests
+               |
+               v
+Routing / firewall guests
+               |
+               v
+Proxmox hosts
+               |
+               v
+Storage and support systems
+               |
+               v
+Network equipment being serviced
+```
+
+The exact order may vary depending on which systems are being maintained.
+
+### Step 1 — Shut Down Nonessential Guests
+
+I begin with workloads that aren't needed for managing the shutdown.
+
+That includes attack-test systems, vulnerability scanners, and other optional applications.
+
+Guests should be shut down through their operating system or Proxmox rather than abruptly removing host power.
+
+I verify their state using:
+
+```bash
+qm list
+pct list
+```
+
+### Step 2 — Shut Down Monitoring and Application Guests
+
+Next are services such as Wazuh, LibreNMS, NetBox, and Docker applications.
+
+The goal is to stop application workloads before the infrastructure they depend on.
+
+### Step 3 — Shut Down Identity and Routing Guests
+
+I shut down `dc01` after the applications and services that rely on Active Directory are stopped.
+
+I keep `fw01` running while I still need inter-VLAN access for shutdown or administration.
+
+Because OPNsense is virtualized, shutting down its Proxmox host or the firewall guest itself will interrupt routed VLAN access.
+
+I therefore finish the necessary remote or cross-VLAN work before stopping it.
+
+### Step 4 — Shut Down the Proxmox Nodes
+
+Once the guests have been stopped, I shut down the hypervisors.
+
+The documented order is:
 
 1. `pve04` — `192.168.1.13`
 2. `pve03` — `192.168.1.12`
 3. `pve02` — `192.168.1.11`
 4. `pve01` — `192.168.1.10`
 
-Do not simply remove UPS/power-strip power from running Proxmox hosts.
+I confirm that each host has shut down cleanly.
 
-## Step 3 — Shut Down Storage
+The order is a working procedure, not a requirement imposed by Proxmox. It can be adjusted to account for where critical guests are running.
 
-After compute workloads no longer depend on shared storage:
+### Step 5 — Shut Down Storage
 
-- shut down `storage01` cleanly;
-- allow Windows to complete shutdown;
-- power down attached storage only after host I/O has stopped.
+After Proxmox no longer needs access to the backup share, I shut down `storage01` cleanly.
 
-## Step 4 — Shut Down Remaining Lab Support Devices
+I let Windows complete its shutdown before removing power from attached storage devices.
 
-After compute and storage dependencies are down, shut down the remaining support hosts that are part of the physical work:
+The Drobo shouldn't be disconnected while the server is still performing writes.
+
+### Step 6 — Shut Down Remaining Support Devices
+
+For a full physical shutdown, I then stop the remaining support hosts:
 
 1. `dns01` — `192.168.1.20`
-2. `tailscale01` — `192.168.1.185`
-3. `util01` — `192.168.1.243` — shut down last among the support hosts because it provides UPS/NUT monitoring
+2. `tailscale01` — documented LAN address `192.168.1.185`
+3. `util01` — `192.168.1.243`
 
-The resulting household DNS and homelab remote-access outage is expected during this planned full-lab maintenance window.
+I leave `util01` until last among these systems because it provides UPS/NUT monitoring.
 
-## Step 5 — Power Down Switches / Lab Power as Needed
+Shutting down DNS and Tailscale will affect household name resolution and remote access, so I only include them when the maintenance actually requires it.
 
-Power down the switching and UPS-fed lab devices that must be moved or recabled.
+### Step 7 — Network and Power Equipment
 
-**Leave the AT&T fiber box/gateway powered.**
+Finally, I power down the switches and other equipment that needs to be moved or rewired.
 
----
-
-# 4. Physical Work Window
-
-With the lab safely down:
-
-1. move equipment into the NETWORK / COMPUTE / STORAGE / POWER zones;
-2. attach prepared cable labels;
-3. route short same-shelf patch cables;
-4. connect `sw01` according to the current port/cable record;
-5. secure lightweight devices with removable hook-and-loop mounting where
-   appropriate;
-6. confirm no vents are blocked;
-7. confirm no cable is carrying device weight;
-8. photograph the completed physical arrangement before applying power.
-
-Avoid making undocumented logical/VLAN changes during a physical-rebuild step.
-The first recovery target is the known flat `192.168.1.0/24` network.
+I leave the AT&T gateway running when possible.
 
 ---
 
-# 5. Controlled Startup Order
+## 5. Physical Maintenance
 
-The startup order follows dependencies from the network outward:
+Once the affected systems are down, I can work on cabling, power distribution, equipment placement, or switch connections.
+
+Before restoring power, I check that:
+
+- Every device has the intended power connection.
+- Ethernet cables connect to the recorded switch ports.
+- USB storage connections are secure.
+- No ventilation openings are obstructed.
+- Power adapters and cables aren't under strain.
+- No equipment is supported by its cables.
+
+For network changes, I avoid combining unrelated firewall, VLAN, and physical-cabling modifications into one difficult-to-reverse operation.
+
+---
+
+## 6. Controlled Startup
+
+Startup reverses the broad dependency order, with networking and storage available before the applications that use them.
 
 ```text
-Network path
-    ↓
-DNS / storage support
-    ↓
+Network switching
+        |
+        v
+DNS, storage and support systems
+        |
+        v
 Proxmox hosts
-    ↓
-Cluster quorum
-    ↓
-VMs / LXCs
-    ↓
-Monitoring and application validation
+        |
+        v
+OPNsense and network routing
+        |
+        v
+Active Directory and core services
+        |
+        v
+Monitoring and applications
+        |
+        v
+Functional verification
 ```
 
-## Step 1 — Restore Switching
+### Step 1 — Restore Network Switching
 
-Power the required switch infrastructure first.
+I power on the switches and verify the intended uplinks.
 
-For the current Cisco/OPNsense deployment:
+The main switch addresses are:
 
-- confirm `sw01` powers normally;
-- confirm expected link lights;
-- confirm management reachability at `192.168.1.21` when the management path is available;
-- verify Gi1-Gi4 trunks, Gi8 upstream, and the configured VLAN membership.
+| System | Address |
+|---|---|
+| `sw01` | `192.168.1.21` |
+| `sw02` | `192.168.1.22` |
 
-`fw01` is a Proxmox guest, so its service validation occurs after the Proxmox hosts are available. Do not expect routed VLAN guests to be reachable until `fw01` has started.
+I confirm that relevant link ports are active and that the management network is reachable.
 
-## Step 2 — Start DNS and Storage Dependencies
+OPNsense routing won't be available until its Proxmox host and VM have started.
 
-Power and validate:
+### Step 2 — Start DNS and Storage
 
-- `dns01` (`192.168.1.20`);
-- `tailscale01` (`192.168.1.185`);
-- `util01` (`192.168.1.243`);
-- `storage01` (`192.168.1.208`);
-- Drobo / attached storage.
+I bring up the independent support systems and the storage server.
 
-Confirm basic DNS and SMB/CIFS availability before relying on them from the
-cluster.
+The primary systems are:
 
-After an unexpected power loss or reboot, validate the Windows storage host
-before assuming the Proxmox CIFS configuration has failed.
+| System | Address |
+|---|---|
+| `dns01` | `192.168.1.20` |
+| `tailscale01` | `192.168.1.185` — previously documented address |
+| `util01` | `192.168.1.243` |
+| `storage01` | `192.168.1.208` |
 
-On `storage01`:
+I confirm DNS service and that the Drobo and other disks are mounted before depending on shared storage.
+
+On `storage01`, I can check:
 
 ```powershell
 Get-Service LanmanServer
@@ -215,180 +277,171 @@ Get-SmbShare
 Get-NetConnectionProfile
 ```
 
-Confirm:
+After a previous power outage, Windows incorrectly classified the Ethernet connection as Public, blocking inbound SMB access.
 
-- the Drobo volume is mounted;
-- the `ProxmoxBackups` share exists;
-- `LanmanServer` is running;
-- the active Ethernet connection is classified as `Private`.
+That is now one of the first things I check if storage is unavailable after a reboot.
 
-From a Proxmox node, verify SMB reachability:
+### Step 3 — Start Proxmox
 
-```bash
-nc -nvz -w 3 192.168.1.208 445
-```
-
-A Windows Ethernet profile that changes to `Public` can allow the local SMB
-service to remain healthy while Windows Firewall blocks remote access.
-
-## Step 3 — Start Proxmox Nodes
-
-Power up the Proxmox nodes in this order:
+The documented startup order is:
 
 1. `pve01` — `192.168.1.10`
 2. `pve02` — `192.168.1.11`
 3. `pve03` — `192.168.1.12`
 4. `pve04` — `192.168.1.13`
 
-Allow each node to complete boot before interpreting cluster state.
+I allow time for the hosts and cluster services to initialize.
 
-## Step 4 — Validate Cluster Health
-
-From a cluster node:
+Then check:
 
 ```bash
 pvecm status
+pvecm nodes
 pvesh get /nodes
 pvesm status
 ```
 
-Healthy target:
+The expected normal cluster state is four nodes, four votes, and a quorum requirement of three.
+
+### Step 4 — Verify OPNsense
+
+I confirm that `fw01` has started before expecting routed VLAN workloads to be reachable.
+
+The relevant documented OPNsense interfaces include:
 
 ```text
-Nodes:          4
-Total votes:    4
-Quorum:         3
-Quorate:        Yes
+WAN / original LAN: 192.168.1.187
+Management VLAN:    10.10.10.1
 ```
 
-Confirm the shared backup target is visible.
+I check the firewall's interface state and routed connectivity between the networks that depend on it.
 
-## Step 5 — Start / Verify Workloads
+A Proxmox guest can be running while it remains unreachable because OPNsense hasn't finished starting.
 
-Check the expected guest list and startup state:
+### Step 5 — Start Core Services
 
-```bash
-qm list
-pct list
-```
+After networking and routing are available, I confirm the main infrastructure services.
 
-Start or validate intentionally manual-start workloads in dependency order:
+These include:
 
-1. `fw01` — OPNsense routing/firewall
-2. `dc01` — Active Directory / DNS
-3. `docker` — Docker application host at `192.168.1.174`
-4. `nb01` — NetBox at `10.10.10.15`
-5. `nms01` — LibreNMS at `10.10.40.10`
-6. `wazuh01` — Wazuh SIEM
-7. `apache-guacamole` — remote-access gateway at `192.168.1.151`
+- `dc01` — Active Directory and domain DNS
+- `docker` — containerized services
+- `nb01` — NetBox
+- `nms01` — LibreNMS
+- `wazuh01` — Wazuh
+- Apache Guacamole for remote management
 
-Then start or verify remaining application/test workloads as needed.
+Some guests are configured to start automatically.
+
+I verify their state rather than starting duplicate instances or assuming that the configured boot order completed successfully.
+
+Optional test systems can be started afterward as needed.
 
 ---
 
-# 6. Post-Startup Validation
+## 7. Post-Startup Verification
 
-Do not declare the change successful merely because devices have power.
+The maintenance isn't finished simply because all four Proxmox nodes are online.
 
-Validate at least:
+I check the actual services.
 
-## Network
+### Network
 
 - [ ] AT&T gateway reachable at `192.168.1.254`.
-- [ ] `sw01` reachable at `192.168.1.21` when connected.
-- [ ] `pve01`-`pve04` reachable.
-- [ ] Internet connectivity works from a known client.
+- [ ] Managed switches reachable.
+- [ ] All four Proxmox nodes reachable.
+- [ ] OPNsense interfaces and routing working.
+- [ ] Expected VLAN connectivity restored.
+- [ ] Internet access works from an appropriate client.
 
-## DNS / Identity
+### DNS and Identity
 
-- [ ] `dns01` answers expected DNS queries.
-- [ ] `dc01` reachable at `10.10.20.10`.
-- [ ] `corp.home.arpa` resolution works.
-- [ ] `win11-01` retains domain connectivity.
+- [ ] `dns01` answers DNS queries.
+- [ ] `dc01` is available.
+- [ ] `corp.home.arpa` resolves.
+- [ ] Domain authentication works where applicable.
 
-## Storage / Backups
+### Storage
 
-- [ ] `storage01` reachable at `192.168.1.208`.
-- [ ] Drobo / attached storage mounted normally.
-- [ ] Windows Ethernet profile on `storage01` is `Private`.
-- [ ] SMB TCP 445 reachable from a Proxmox node.
-- [ ] `t-20-backup` active in Proxmox.
-- [ ] `pvesm list t-20-backup` returns expected backup contents.
-- [ ] No storage device reports an unexpected fault.
+- [ ] `storage01` and the Drobo are available.
+- [ ] SMB port 445 is reachable.
+- [ ] `t-20-backup` is active.
+- [ ] Proxmox can list existing backups.
 
-## Proxmox
+### Virtualization and Applications
 
-- [ ] Four nodes visible.
-- [ ] Cluster quorate.
-- [ ] Expected VMs/LXCs visible.
-- [ ] Workloads start as intended.
+- [ ] Cluster has quorum.
+- [ ] Required VMs and containers are running.
+- [ ] Docker applications respond.
+- [ ] Wazuh services and agent telemetry return.
+- [ ] LibreNMS polling resumes.
+- [ ] Uptime Kuma monitoring recovers.
+- [ ] Remote-access services work as expected.
 
-## Security / Monitoring
-
-- [ ] `wazuh01` reachable.
-- [ ] Wazuh services healthy.
-- [ ] `docker` reachable at `192.168.1.174` and key containers are healthy.
-- [ ] Uptime Kuma, Nginx Proxy Manager, Homarr, Grafana, and Prometheus respond as expected.
-- [ ] `nb01` reachable at `10.10.10.15`.
-- [ ] `nms01` reachable at `10.10.40.10` and LibreNMS polling resumes.
-- [ ] `apache-guacamole` reachable at `192.168.1.151`.
-- [ ] `tailscale01` reconnects and advertises the intended subnet route.
-- [ ] Monitored endpoints reconnect.
-- [ ] No important telemetry path was lost during recabling.
+If something isn't working, I document the failure and check its dependencies rather than restarting unrelated systems.
 
 ---
 
-# 7. Rollback Criteria
+## 8. Rollback and Recovery
 
-Rollback is appropriate when the physical/network change creates broad impact
-that cannot be isolated quickly and safely.
+For physical network changes, I want a known-good configuration to return to if the new cabling or switching arrangement doesn't work.
 
-Examples:
+If a network change interrupts several systems, I stop further modifications, inspect the switch and physical connections, and restore the known-good path when necessary.
 
-- multiple lab systems lose network connectivity after the Cisco move;
-- `sw01` cannot be managed and port/VLAN state is uncertain;
-- DNS or storage dependencies cannot be restored over the new physical path;
-- cabling cannot be confidently mapped.
+The original physical-rebuild plan included moving lab connections back to the existing TRENDnet switch if the initial Cisco migration failed.
 
-Rollback procedure:
+That remains useful historical rollback context, although the current network now uses managed VLANs and OPNsense routing.
 
-1. stop additional configuration changes;
-2. preserve logs/configuration state where useful;
-3. reconnect affected lab systems to the previously known-good TRENDnet path;
-4. restore the flat `192.168.1.0/24` network;
-5. validate DNS, storage, Proxmox quorum, and key workloads;
-6. document what failed before scheduling another attempt.
+A rollback today must account for those dependencies rather than assuming every device still belongs on a flat untagged LAN.
 
-The TRENDnet remains the home-network switch, so this rollback concerns homelab
-connections rather than replacing household switching.
+I document what failed and what remained working before trying the change again.
 
 ---
 
-# 8. Change Closure
+## 9. Maintenance Record
 
-After successful startup:
+```text
+Date:
+Reason for shutdown:
+Affected systems:
 
-- [ ] Photograph the final physical arrangement.
-- [ ] Record the final `C##` cable-to-port mapping.
-- [ ] Update `02-asset-inventory.md` if addresses/roles changed.
-- [ ] Update `diagrams/current-architecture.md` if the live switch path changed.
-- [ ] Update `04-network-vlans.md` with the actual post-move switch state.
-- [ ] Record any unexpected issue as a ticket/change example.
-- [ ] Run `git diff --check` before committing documentation changes.
+Pre-shutdown checks:
+Backup status:
+Cluster state:
+Storage status:
+
+Shutdown completed:
+Physical or configuration changes:
+
+Startup completed:
+Cluster verification:
+Network verification:
+Storage verification:
+Application verification:
+
+Problems encountered:
+Corrective actions:
+Remaining issues:
+Final status:
+```
+
+I want the record to distinguish the planned change, any unexpected failures, and the actual outcome.
 
 ---
 
-# 9. Skills Demonstrated
+## Result
 
-This runbook demonstrates:
+The homelab has enough interdependent systems that a full shutdown needs a defined order.
 
-- planned outage management;
-- dependency-aware shutdown/startup sequencing;
-- graceful virtualization shutdown;
-- storage dependency handling;
-- network-first recovery;
-- cluster/quorum validation;
-- service restoration checks;
-- physical change management;
-- rollback criteria;
-- post-change documentation.
+The main considerations are graceful guest shutdown, preserving routing and management access until it's no longer needed, bringing storage and network services online before dependent workloads, and validating applications afterward.
+
+The process will continue to evolve as I change VLANs, improve UPS integration, and move services between Proxmox nodes.
+
+## Related Documentation
+
+- [Physical Infrastructure](18-physical-infrastructure.md)
+- [Cabling Standard](20-cabling-standard.md)
+- [Proxmox Cluster](03-proxmox-cluster-build.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [Homelab Operations Checklist](15-homelab-operations-checklist.md)
