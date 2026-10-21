@@ -1,82 +1,84 @@
 # Proxmox Backup and Restore Validation
 
-## Purpose
+## Overview
 
-This runbook documents how to validate a Proxmox VE VM backup by restoring it as a temporary, isolated VM and verifying that the guest operating system and application services are recoverable.
+A successful backup job doesn't necessarily mean the backup can be restored.
 
-A successful backup job alone does not prove recoverability. This procedure tests the complete recovery path without disrupting the production VM.
+I wanted to test that distinction in my Proxmox environment, particularly because the backups are stored on a Windows server using SMB/CIFS.
+
+On August 26, 2026, I restored a backup of my Debian Docker VM into a separate temporary virtual machine.
+
+I kept the restored copy disconnected from the production network, verified that the operating system booted, checked Docker, and confirmed that the restored Uptime Kuma application responded correctly.
+
+After the test, I removed the temporary VM and verified that the original production machine had not been affected.
+
+**The restore test passed.**
 
 ---
 
-## Tested Environment
+## 1. Tested Environment
 
-Validation performed **August 26, 2026**.
+The exercise used these systems and resources:
 
-| Item                   | Value            |
-| ---------------------- | ---------------- |
-| Proxmox node           | `pve01`          |
-| Production VM          | `210` (`docker`) |
-| Temporary restore VMID | `910`            |
-| Backup storage         | `t-20-backup`    |
-| Restore storage        | `local-lvm`      |
-| Guest OS               | Debian 13        |
-| Application            | Uptime Kuma      |
-| Container runtime      | Docker           |
-| Production networking  | `vmbr0`, DHCP    |
-| Production VM IP       | `192.168.1.174`  |
-| Validation result      | **PASS**         |
+| Item | Value |
+|---|---|
+| Test date | August 26, 2026 |
+| Proxmox node | `pve01` |
+| Production VM | VMID 210 — `docker` |
+| Temporary restored VM | VMID 910 |
+| Backup storage | `t-20-backup` |
+| Restore destination | `local-lvm` |
+| Guest OS | Debian 13 |
+| Container runtime | Docker |
+| Application | Uptime Kuma |
+| Production address | `192.168.1.174` |
+| Result | PASS |
 
-The backup tested was:
+The exact backup archive was:
 
 ```text
 t-20-backup:backup/vzdump-qemu-210-2026_08_26-15_55_47.vma.zst
 ```
 
----
+The production VM used `vmbr0` and DHCP.
 
-## Safety Considerations
-
-Do not boot a restored copy of a production VM directly onto the production LAN without first reviewing its network configuration.
-
-A restored VM can contain the original:
-
-* MAC address
-* hostname
-* DHCP configuration
-* static IP configuration
-* application identity
-* service configuration
-
-This can create duplicate-IP, duplicate-hostname, or application conflicts.
-
-For this test:
-
-1. The backup was restored using `--unique 1` to generate a new MAC address.
-2. Automatic startup was disabled.
-3. The restored NIC was placed in a link-down state before the first boot.
-4. Application testing was performed locally inside the restored VM.
+This page records the commands and observations from that specific test. Any future restore should use the correct current VM configuration and backup archive rather than assuming those historical values still apply.
 
 ---
 
-## 1. Locate the Backup
+## 2. Why I Isolated the Restored VM
 
-Run on the Proxmox host:
+Restoring a copy of a working server creates the possibility of duplicate network identities.
+
+The backup can contain the original hostname, MAC address, IP configuration, and application data.
+
+Starting that copy on the same network as the production VM could cause conflicts or unintended behavior.
+
+For this test, I took three precautions:
+
+1. Generated a new virtual MAC address during restore.
+2. Disabled automatic startup.
+3. Placed the restored virtual NIC into a link-down state before booting.
+
+I could then check the guest using the Proxmox console and QEMU Guest Agent rather than connecting it to the production LAN.
+
+---
+
+## 3. Checking the Backup
+
+On `pve01`, I confirmed that Proxmox could list the backup:
 
 ```bash
 pvesm list t-20-backup --vmid 210
 ```
 
-Confirm that the desired backup appears and that Proxmox can read the backup storage.
-
----
-
-## 2. Inspect the Production VM
+I also inspected the production VM configuration:
 
 ```bash
 qm config 210
 ```
 
-Important settings observed during this validation included:
+The recorded configuration included:
 
 ```text
 name: docker
@@ -89,55 +91,42 @@ onboot: 1
 scsi0: local-lvm:vm-210-disk-1,discard=on,size=10G,ssd=1
 ```
 
+I wanted to know the original networking and disk configuration before restoring it.
 
----
-
-## 3. Select an Unused Temporary VMID
-
-VMID `910` was selected for the test.
-
-Verify that it is unused:
-
-```bash
-qm status 910
-```
-
-Expected result:
-
-```text
-Configuration file 'nodes/pve01/qemu-server/910.conf' does not exist
-```
-
-Check storage capacity:
+I also checked the available Proxmox storage:
 
 ```bash
 pvesm status
 ```
 
-Confirm that the destination storage has sufficient free space.
+The temporary VMID was 910.
+
+Before using it, I checked that no existing VM had that ID:
+
+```bash
+qm status 910
+```
+
+The expected result was that the VM configuration did not exist.
 
 ---
 
-## 4. Confirm Restore Options
+## 4. Restoring the Backup
 
-Verify that the installed `qmrestore` supports unique network identity generation:
+Before restoring, I checked whether the installed `qmrestore` supported generating a unique network identity.
 
 ```bash
 qmrestore help | grep -A2 -B2 unique
 ```
 
-The relevant option is:
+The relevant option was:
 
 ```text
 --unique <boolean>
     Assign a unique random ethernet address.
 ```
 
----
-
-## 5. Restore the Backup
-
-Restore the production VM backup to temporary VMID `910`:
+I then restored the archive:
 
 ```bash
 qmrestore \
@@ -147,235 +136,218 @@ qmrestore \
   --unique 1
 ```
 
-Do not use `--start`.
+I did not use `--start`.
 
-By default, `qmrestore` leaves the restored VM stopped.
+The restored VM remained stopped after the restore operation completed.
 
-The restore successfully recreated:
-
-* EFI disk
-* cloud-init disk
-* 10 GB system disk
-* VM configuration
+The restore recreated the VM configuration, EFI disk, cloud-init disk, and system disk.
 
 ---
 
-## 6. Disable Automatic Startup
+## 5. Verifying Network Isolation
 
-Before booting:
+Before booting the restored machine, I disabled automatic startup:
 
 ```bash
 qm set 910 --onboot 0
 ```
 
-Verify:
+I inspected the restored configuration:
 
 ```bash
 qm config 910 | egrep '^(name|net0|onboot|ipconfig0|scsi0|efidisk0):'
 ```
 
-During the August 26 test, the restored VM received a new MAC address:
+The restored VM had a new MAC address.
 
-```text
-BC:24:11:18:BF:60
-```
+| VM | MAC address recorded during test |
+|---|---|
+| Production VM 210 | `02:1F:08:D6:E8:C4` |
+| Restored VM 910 | `BC:24:11:18:BF:60` |
 
-This differed from production VM 210:
-
-```text
-02:1F:08:D6:E8:C4
-```
-
----
-
-## 7. Isolate the Restored NIC
-
-Keep the virtual NIC installed but place its link in the down state:
+I then placed the restored network interface in a disconnected state:
 
 ```bash
 qm set 910 --net0 "virtio=BC:24:11:18:BF:60,bridge=vmbr0,link_down=1"
 ```
 
-Verify:
-
-```bash
-qm config 910 | grep '^net0'
-```
-
-Expected:
+The configuration check showed:
 
 ```text
 net0: virtio=BC:24:11:18:BF:60,bridge=vmbr0,link_down=1
 ```
 
-This permits normal guest booting while preventing communication with the production LAN.
+This allowed the VM to boot without communicating over the production network.
 
 ---
 
-## 8. Boot the Restored VM
+## 6. Booting the Restored Guest
+
+I started the temporary VM:
 
 ```bash
 qm start 910
 ```
 
-Verify:
+Then checked its status:
 
 ```bash
 qm status 910
 ```
 
-Expected:
+The VM reached the running state and Debian booted successfully.
 
-```text
-status: running
-```
+Because the virtual network link was intentionally disabled, cloud-init couldn't reach DNS or package repositories during startup.
 
-The Debian guest successfully reached multi-user mode.
+Those network-related messages were expected under the test conditions.
 
-Because the NIC was intentionally disconnected, cloud-init reported network/DNS failures while attempting package updates. These were expected and did not indicate a failed restore.
+They weren't evidence of a failed restore.
 
 ---
 
-## 9. Verify the Guest Through QEMU Guest Agent
+## 7. Checking the Operating System
 
-The restored VM had the QEMU Guest Agent installed and running.
+The guest already had the QEMU Guest Agent installed.
 
-This allowed validation without SSH or the guest root password.
+That allowed me to run commands inside the restored VM from the Proxmox host, without needing SSH connectivity.
 
-From the Proxmox host:
+I checked its hostname:
 
 ```bash
 qm guest exec 910 -- hostname
 ```
 
-Successful result:
+The result was:
 
 ```text
 docker
 ```
 
-This confirmed that the restored operating system was operational and that Proxmox could communicate with the guest agent.
+That confirmed that the guest operating system was running and that communication through the QEMU Guest Agent worked.
+
+It also confirmed the restored VM retained the original hostname, which reinforced why I had isolated it from the production network.
 
 ---
 
-## 10. Verify Docker and Application Recovery
+## 8. Checking Docker and Uptime Kuma
 
-Check running containers:
+The next step was to determine whether the application recovered—not merely whether Debian had booted.
+
+From the Proxmox host:
 
 ```bash
 qm guest exec 910 -- docker ps
 ```
 
-The restored VM reported the Uptime Kuma container as:
+Docker reported that the restored Uptime Kuma container was running and healthy.
 
-```text
-Up ... (healthy)
-```
-
-The restored container used:
+The container used the image:
 
 ```text
 louislam/uptime-kuma:2
 ```
 
-and exposed TCP port `3001`.
+and exposed port 3001.
 
-Next, test the application locally inside the restored VM:
+I then tested the application locally inside the restored VM:
 
 ```bash
 qm guest exec 910 -- curl -I http://localhost:3001
 ```
 
-The restored Uptime Kuma instance returned:
+The recorded response was:
 
 ```text
 HTTP/1.1 302 Found
 Location: /dashboard
 ```
 
-This confirmed that the application was responding successfully.
+The redirect demonstrated that the restored Uptime Kuma web service was responding.
+
+Because the VM was isolated, this test did not establish external network accessibility or notification delivery. Those weren't part of this exercise.
+
+It did establish that the restored operating system, Docker runtime, and application could start and respond.
 
 ---
 
-## 11. Validation Result
+## 9. Test Result
 
-**PASS**
+**Restore validation: PASS**
 
-The test demonstrated that the backup could successfully recover:
+August 26, 2026 — VMID 210 restored as temporary VMID 910.
 
-* Proxmox VM configuration
-* EFI configuration
-* virtual disks
-* Debian operating system
-* QEMU Guest Agent
-* Docker runtime
-* Uptime Kuma container
-* persistent application state
-* Uptime Kuma web service
+Verified: VM configuration, restored disks, Debian startup, QEMU Guest Agent, Docker container health, and Uptime Kuma HTTP response.
 
-This provides stronger evidence of recoverability than a successful backup-job status alone.
+This gave me evidence that the archive was usable and that the application could recover from it.
+
+The test was more meaningful than confirming that the Proxmox backup task had completed successfully.
 
 ---
 
-## 12. Remove the Temporary Restore
+## 10. Cleaning Up
 
-Shut down the validation VM:
+Once I'd finished validating the restored guest, I shut it down:
 
 ```bash
 qm shutdown 910
 ```
 
-Verify:
+I checked that it had stopped:
 
 ```bash
 qm status 910
 ```
 
-Expected:
-
-```text
-status: stopped
-```
-
-Delete the temporary VM and its associated storage:
+Then removed the temporary VM and its associated storage:
 
 ```bash
 qm destroy 910 --purge 1
 ```
 
-Verify removal:
+The recorded cleanup removed the restored EFI, cloud-init, and system disks.
 
-```bash
-qm status 910
-```
+I checked again that VMID 910 no longer existed.
 
-Expected:
-
-```text
-Configuration file 'nodes/pve01/qemu-server/910.conf' does not exist
-```
-
-During the August 26 validation, Proxmox successfully removed:
-
-```text
-vm-910-cloudinit
-vm-910-disk-1
-vm-910-disk-0
-```
-
-Production VM `210` remained untouched throughout the exercise.
+Production VM 210 remained untouched throughout the exercise.
 
 ---
 
-## Operational Lesson
+## 11. Reusing the Procedure
 
-A backup should not be considered fully validated merely because the backup job completed successfully.
+For another restore test, the same general procedure applies:
 
-There are two separate questions:
+1. Select a recent backup.
+2. Verify that the archive is accessible.
+3. Inspect the original VM configuration.
+4. Select an unused temporary VMID.
+5. Confirm that restore storage has enough capacity.
+6. Restore without automatically starting the VM.
+7. Ensure the restored network identity cannot conflict with production.
+8. Boot the temporary VM.
+9. Verify the guest operating system.
+10. Verify the application or service.
+11. Record the result.
+12. Remove the temporary environment when finished.
 
-1. **Did the backup complete?**
-2. **Can the system actually be recovered from that backup?**
+The exact isolation method may vary by guest and application.
 
-Periodic isolated restore testing provides evidence for the second question.
+Some services require testing with an isolated network rather than a disconnected NIC. In those cases, I would use a dedicated test VLAN or isolated virtual network and confirm that it could not reach the production environment.
 
-For important Proxmox workloads, restore validation should be incorporated into routine backup and disaster-recovery procedures.
+---
+
+## Result
+
+The August 26 restore test demonstrated that a backup of the Docker VM could be restored into a separate machine and used to run its original operating system and application.
+
+I verified the complete path from the Proxmox archive through guest startup, Docker, and an actual Uptime Kuma HTTP response.
+
+The test also gave me a repeatable procedure for future recovery exercises.
+
+I want backup monitoring and occasional restore testing to remain part of the ongoing operation of the lab.
+
+## Related Documentation
+
+- [Proxmox Backup and Disaster Recovery](01-proxmox-backup.md)
+- [Storage and Backup Resilience](17-storage-backup-resilience.md)
+- [Homelab Operations Checklist](15-homelab-operations-checklist.md)
+- [Proxmox Cluster](03-proxmox-cluster-build.md)
