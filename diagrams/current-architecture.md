@@ -1,6 +1,8 @@
-# Current Homelab Architecture
+# Homelab Architecture — September 11, 2026 Snapshot
 
-This diagram reflects the operational segmented lab as verified on 2026-09-11.
+This diagram records the segmented lab as verified on September 11, 2026.
+It is a historical snapshot, not a verified representation of the current
+topology. Subsequent changes include additional managed switching and services.
 
 ```mermaid
 flowchart TB
