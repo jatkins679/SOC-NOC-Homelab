@@ -1,65 +1,336 @@
-# Tailscale Remote Access
+# Tailscale Remote Access and Troubleshooting
 
-## Purpose
+## Overview
 
-This document records the implemented remote-access path for the homelab using a
-dedicated Tailscale subnet router.
+I use Tailscale to access my homelab when I'm away from home.
 
-The objective is to provide authenticated remote access to systems on the existing
-`192.168.1.0/24` LAN without exposing management services directly to the public
-Internet.
+The main objective is to reach internal systems without exposing Proxmox, SSH, RDP, or other management services directly to the public Internet.
 
-## Implemented Host
+I originally configured a Raspberry Pi as a dedicated Tailscale subnet router for my home network.
 
-| Item | Value |
+That arrangement generally worked, but traveling in Europe in October 2026 exposed a problem with the addressing scheme I'd been using.
+
+The remote network and my home network both used `192.168.1.0/24`.
+
+As a result, my Mac attempted to reach home LAN addresses through its local Wi-Fi connection rather than through Tailscale.
+
+The investigation also involved a separate direct Tailscale connectivity problem, which I eventually worked around using an SSH tunnel.
+
+This page documents the configuration, the troubleshooting steps, and what I verified.
+
+---
+
+## 1. Remote Access Architecture
+
+The main remote-access system is `tailscale01`, a Raspberry Pi running Debian 13.
+
+| Item | Recorded configuration |
 |---|---|
 | Hostname | `tailscale01` |
-| Platform | Raspberry Pi |
-| OS | Debian GNU/Linux 13 (trixie), arm64 |
+| Operating system | Debian 13, arm64 |
 | LAN address | `192.168.1.185` |
 | Tailscale address | `100.90.238.71` |
-| Advertised route | `192.168.1.0/24` |
-| Role | Dedicated Tailscale subnet router |
-| Status | **Operational** |
+| Advertised subnet | `192.168.1.0/24` |
+| Function | Dedicated subnet router |
 
-IPv4 forwarding was enabled as part of the subnet-router configuration.
+These addresses were recorded during the October 2026 investigation. They should be checked against Tailscale and the live host before being treated as current.
 
-## Traffic Path
+The original traffic path is:
 
 ```text
-Remote Tailscale Client
-        |
-        | encrypted Tailscale tunnel
-        v
+Remote laptop
+     |
+     v
+Tailscale encrypted connection
+     |
+     v
 tailscale01
 192.168.1.185
-        |
-        | advertised route 192.168.1.0/24
-        v
-Home / Homelab LAN
+     |
+     v
+Home LAN
+192.168.1.0/24
+     |
+     +-- Proxmox nodes
+     +-- Storage server
+     +-- DNS and management services
 ```
 
-This design keeps Tailscale's role separate from the AT&T gateway and from the OPNsense/VLAN routing policy used inside the segmented lab.
+The Raspberry Pi provides remote access independently of the Proxmox cluster.
 
-## Design Rationale
+That means I can still reach the original LAN even if an individual hypervisor is down.
 
-A dedicated Raspberry Pi was selected so remote access does not depend on any one
-Proxmox node remaining online.
+It does not automatically provide access to every segmented VLAN. Inter-VLAN access still depends on OPNsense and its firewall rules.
 
-This provides:
+---
 
-- an independent path to the flat management LAN;
-- access to SSH, web-management, and other internal services through Tailscale;
-- a clean separation between remote-access networking and experimental VM workloads;
-- a reusable platform for future remote-management testing.
+## 2. Subnet Routing
 
-## Separate Mac Connectivity Case: Surfshark VPN (October 10, 2026)
+Tailscale connects devices using their assigned `100.x.x.x` addresses.
 
-On a Mac connected to Wi-Fi, I could ping the local gateway but couldn't reach the Internet by hostname or by IP address. Because IP connections failed too, this wasn't simply a DNS problem. The cause turned out to be Surfshark: its VPN connection was still active. Disconnecting Surfshark restored Internet access.
+Subnet routing extends that access to devices that aren't running Tailscale themselves.
 
-This was a separate issue from the overlapping `192.168.1.0/24` networks during travel. The practical diagnostic sequence for a repeat incident is to test the gateway, test a public IP, check DNS only if public IP connectivity works, and inspect the active default route and VPN tunnel interfaces before changing the Wi-Fi or router configuration.
+For example, a remote laptop can communicate with `pve02` at `192.168.1.11` through `tailscale01`, provided the remote client accepts the route and local routing doesn't override it.
 
-On macOS, useful read-only commands are:
+On the subnet router, IPv4 forwarding is enabled.
+
+The route `192.168.1.0/24` was advertised and approved in Tailscale.
+
+Useful Linux checks include:
+
+```bash
+tailscale status
+tailscale ip -4
+ip -4 route
+sysctl net.ipv4.ip_forward
+```
+
+On a Mac using the Tailscale application, the command-line executable may not be in the shell's default `PATH`.
+
+I can call it directly:
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale status
+```
+
+The original subnet-router configuration was successfully used to reach systems on the home LAN.
+
+---
+
+## 3. The Problem While Traveling
+
+In October 2026, I was traveling in Europe and wanted to remotely access `storage01`, my Windows storage server.
+
+The server had two relevant addresses:
+
+| Network | Address |
+|---|---|
+| Home LAN | `192.168.1.208` |
+| Tailscale | `100.121.10.38` |
+
+Initially, neither address worked reliably from my traveling Mac.
+
+Remote Desktop failed, and Tailscale initially reported the Windows server as offline.
+
+I wanted to establish whether the problem was with the server, RDP, Tailscale, or routing.
+
+---
+
+## 4. Confirming the Server Was Running
+
+My first useful step was to connect to `tailscale01`, which remained accessible through Tailscale.
+
+From there, I tested `storage01` over the home LAN.
+
+```bash
+ping -c 4 192.168.1.208
+```
+
+All four pings succeeded.
+
+I then checked RDP connectivity:
+
+```bash
+nc -vz -w 5 192.168.1.208 3389
+```
+
+TCP port 3389 accepted the connection.
+
+These tests established that the Windows server was running and that RDP was reachable from within the home network.
+
+That narrowed the problem considerably.
+
+It also meant there was no immediate reason to modify Windows firewall rules or restart the storage server.
+
+---
+
+## 5. Finding the Overlapping Subnets
+
+On my Mac, I checked the route to the home LAN address:
+
+```bash
+route -n get 192.168.1.208
+```
+
+I also checked the Wi-Fi address and routing table:
+
+```bash
+ipconfig getifaddr en0
+netstat -rn -f inet | grep 192.168.1
+```
+
+The traveling Mac had received:
+
+```text
+192.168.1.179
+```
+
+The remote Wi-Fi network was using the same `192.168.1.0/24` subnet as my home network.
+
+The route to `192.168.1.208` selected the Mac's local Wi-Fi interface, `en0`, rather than its Tailscale interface.
+
+The destination appeared to be on the local network.
+
+That explained why the home LAN address didn't work.
+
+The connection attempts weren't reaching the subnet router.
+
+### Why This Happened
+
+Both networks were using:
+
+```text
+192.168.1.0/24
+```
+
+That is a common default address range on consumer routers.
+
+The operating system preferred its directly connected local subnet for the destination.
+
+Even though Tailscale advertised the home subnet, the overlapping local route took precedence.
+
+This was a routing problem, not a failure of the Windows server or RDP service.
+
+---
+
+## 6. Using an SSH Tunnel
+
+Because `tailscale01` could still reach the Windows server, I used it as an SSH jump host.
+
+From a terminal on the Mac:
+
+```bash
+ssh -N -L 13389:192.168.1.208:3389 jatkins@100.90.238.71
+```
+
+The command creates a local TCP listener on port 13389 and forwards connections through the SSH session to port 3389 on `storage01`.
+
+The path is:
+
+```text
+Remote Desktop on Mac
+127.0.0.1:13389
+       |
+       v
+Local SSH tunnel
+       |
+       v
+tailscale01
+100.90.238.71
+       |
+       v
+storage01
+192.168.1.208:3389
+```
+
+I then connected the Remote Desktop client to:
+
+```text
+127.0.0.1:13389
+```
+
+After correcting the local tunnel setup, the RDP session worked.
+
+The first attempt produced a localhost connection-refused error. I didn't preserve enough evidence to determine the exact cause, so I won't assign one.
+
+### Checking the Tunnel
+
+For future troubleshooting, useful Mac commands are:
+
+```bash
+lsof -nP -iTCP:13389 -sTCP:LISTEN
+```
+
+and:
+
+```bash
+ssh -v -o ExitOnForwardFailure=yes -N \
+  -L 13389:192.168.1.208:3389 \
+  jatkins@100.90.238.71
+```
+
+The first command confirms whether something is listening on the local port.
+
+The second provides SSH diagnostic output and detects an unsuccessful local port-forward setup.
+
+The SSH session must remain running while the tunnel is in use.
+
+---
+
+## 7. Restoring Direct Tailscale Access
+
+Once I had access to `storage01`, I checked its Tailscale service.
+
+From PowerShell on the Windows server:
+
+```powershell
+Get-Service Tailscale
+tailscale status
+```
+
+The service was running.
+
+I also tested Tailscale connectivity back to the traveling Mac:
+
+```powershell
+tailscale ping 100.101.215.58
+```
+
+That succeeded.
+
+From the Mac, I then tested the reverse direction:
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.121.10.38
+```
+
+Tailscale initially used a DERP relay in Madrid, then established a direct peer connection.
+
+Next, I tested RDP:
+
+```bash
+nc -vz -G 5 100.121.10.38 3389
+```
+
+TCP 3389 was reachable.
+
+I successfully established a direct Remote Desktop connection to:
+
+```text
+100.121.10.38
+```
+
+At that point, the SSH tunnel was no longer necessary.
+
+### What Remained Unexplained
+
+The earlier Tailscale offline indication cleared during the investigation.
+
+I confirmed that the connection eventually worked, but I did not establish exactly why the Windows server had initially appeared offline to the Mac.
+
+That uncertainty is separate from the overlapping-subnet problem, which was directly demonstrated by the Mac's routing table.
+
+---
+
+## 8. A Separate Surfshark Problem
+
+During the same trip, I encountered another connectivity problem on a Mac.
+
+The Mac connected to Wi-Fi and could ping its local gateway, but it couldn't reach Internet destinations by hostname or IP address.
+
+The symptom occurred on more than one Wi-Fi network.
+
+The cause was Surfshark VPN, which was still connected.
+
+Disconnecting Surfshark restored Internet access.
+
+This incident wasn't caused by the Tailscale subnet router or by the overlapping home and remote networks.
+
+It was a separate VPN connectivity problem.
+
+### Diagnostic Commands
+
+Useful read-only commands on macOS include:
 
 ```bash
 route -n get default
@@ -68,125 +339,106 @@ scutil --nwi
 ifconfig | grep -A 4 '^utun'
 ```
 
-When a commercial VPN is connected, verify whether it has installed the default route or a traffic-blocking policy. In this case, disconnecting Surfshark was the confirmed fix; no router or Tailscale changes were required.
+These help reveal routing and tunnel-interface state.
 
-## Tailscale vs Commercial VPN
+If the gateway responds but external IP addresses don't, I now check active VPN connections before changing DNS or Wi-Fi settings.
 
-Tailscale is used here for **private remote access into the homelab**.
+A successful local gateway ping doesn't establish that the machine has a working route to the Internet.
 
-A commercial VPN service such as Surfshark serves a different purpose: it primarily
-changes or protects outbound Internet traffic. It is not a substitute for the
-Tailscale subnet-router role documented here.
+---
 
-## Validation
+## 9. Tailscale and Commercial VPNs
 
-The implementation was considered operational after:
+I use Tailscale and Surfshark for different purposes.
 
-- `tailscale01` joined the tailnet;
-- IPv4 forwarding was enabled;
-- route `192.168.1.0/24` was advertised and approved;
-- remote Tailscale clients could reach LAN systems through the subnet router.
+Tailscale provides a private connection between my devices and my homelab.
 
-## Security Notes
+Surfshark is a commercial VPN that primarily changes or protects outbound Internet connectivity.
 
-- Do not expose Tailscale authentication keys, reusable auth keys, or node secrets.
-- Keep remote-access authorization in the Tailscale control plane.
-- Continue to treat the flat `192.168.1.0/24` LAN as trusted only to the extent justified by the current design.
-- The advertised Tailscale route currently covers `192.168.1.0/24`; access to routed lab VLANs is governed separately by OPNsense policy and should not be assumed from the subnet-router advertisement alone.
+Both can create tunnel interfaces and affect routing, but they aren't interchangeable.
 
-## Skills Demonstrated
+When troubleshooting a Mac running more than one VPN application, I need to establish which tunnels are actually active and which routes they control.
 
-- VPN / overlay networking
-- Linux IP forwarding
-- subnet routing
-- remote administration
-- route advertisement
-- secure management-plane design
-- troubleshooting and validation
+I shouldn't assume that a VPN is disconnected merely because I don't see an application window open.
 
+---
 
-## Troubleshooting Case: Remote RDP Failure While Traveling (October 12, 2026)
+## 10. Remote Access Troubleshooting Checklist
 
-While traveling in Spain, I couldn't reach `storage01` using either its home LAN address (`192.168.1.208`) or its Tailscale address (`100.121.10.38`). Remote Desktop failed, and initial ping attempts also failed. The Tailscale client on my Mac initially described the Windows server as offline.
+When I can't reach a home system remotely, I use the following sequence.
 
-Rather than start changing the Windows server or firewall rules, I worked through the connection from the inside out.
+1. Confirm that Tailscale is connected on the remote client.
+2. Check whether the destination has a direct Tailscale address.
+3. Test the peer using `tailscale ping`.
+4. Test the required TCP port.
+5. Inspect the remote client's routing table.
+6. Check whether the remote network overlaps the home subnet.
+7. Test the destination from a known-good system inside the home network.
+8. Verify the actual application.
+9. Use a temporary SSH tunnel if the destination is reachable through an intermediary.
+10. Record which tests succeeded and which failed.
 
-### What I checked
+For systems reachable only through the subnet router, I also confirm the advertised route and whether the client is accepting it.
 
-1. **Checked the Mac's Tailscale status.** On the Mac, the `tailscale` command wasn't in my shell's PATH, but the application binary worked:
-   ```bash
-   /Applications/Tailscale.app/Contents/MacOS/Tailscale status
-   ```
-   At first, `storage01` appeared as `idle; offline`, with transmitted bytes but no received bytes.
+For hosts on VLANs behind OPNsense, I check the firewall and return-routing requirements separately.
 
-2. **Checked the server from the home network.** I SSHed to the subnet router, `tailscale01` (`100.90.238.71`), and ran:
-   ```bash
-   ping -c 4 192.168.1.208
-   nc -vz -w 5 192.168.1.208 3389
-   ```
-   All four pings succeeded, and TCP port 3389 accepted a connection. That established that the server was online and the RDP port was reachable from within the home LAN.
+The key is to establish where communication stops rather than changing settings on several systems at once.
 
-3. **Looked at routing on the traveling Mac.**
-   ```bash
-   route -n get 192.168.1.208
-   ipconfig getifaddr en0
-   netstat -rn -f inet | grep 192.168.1
-   ```
-   My Mac had received `192.168.1.179` from the network in Spain. Its route to `192.168.1.208` selected `en0` (local Wi-Fi), not the Tailscale `utun12` interface. Both networks were using `192.168.1.0/24`. That was the confirmed reason the home LAN address wouldn't work from this location: traffic was going to the local network instead.
+---
 
-### Workaround: SSH tunnel to the RDP server
+## 11. Planned Home LAN Renumbering
 
-Because `tailscale01` could reach `storage01`, I used the subnet router as a jump host. From a **terminal on the Mac**, not from a shell on the Linux router:
+The experience highlighted a limitation in my original home network design.
 
-```bash
-ssh -N -L 13389:192.168.1.208:3389 jatkins@100.90.238.71
+Using `192.168.1.0/24` makes subnet conflicts relatively likely when connecting from other homes, hotels, or travel networks.
+
+I'm considering changing the original default LAN to:
+
+```text
+192.168.11.0/24
 ```
 
-Then I connected the Remote Desktop client to `127.0.0.1:13389`. This provided access without depending on the conflicting `192.168.1.x` route from the Mac. I initially received a localhost connection-refused message; after resolving the local SSH tunnel setup, RDP through the tunnel succeeded. The exact cause of that first refusal wasn't recorded.
+That change has not yet been implemented.
 
-For future tunnel diagnostics on macOS:
+The existing segmented networks include:
 
-```bash
-lsof -nP -iTCP:13389 -sTCP:LISTEN
-ssh -v -o ExitOnForwardFailure=yes -N \
-  -L 13389:192.168.1.208:3389 \
-  jatkins@100.90.238.71
-```
+| VLAN | Purpose |
+|---|---|
+| 10 | Management |
+| 20 | Servers |
+| 30 | Users |
+| 40 | SOC/Security |
+| 50 | Attack/Test |
+| 60 | Guest |
 
-The tunnel terminal needs to remain open while it's in use.
+Moving the remaining flat-LAN devices or changing the default subnet requires careful planning.
 
-### Restoring direct Tailscale access
+The dependencies include the AT&T gateway, Proxmox management addresses, switch management, Pi-hole, OPNsense, DHCP, static reservations, DNS, monitoring systems, Tailscale routes, and firewall rules.
 
-Once I was signed in to `storage01`, the Windows Tailscale service was running. In PowerShell:
+I intend to make the changes incrementally and preserve a working management and rollback path.
 
-```powershell
-Get-Service Tailscale
-tailscale status
-tailscale ping 100.101.215.58
-```
+Changing to a less common subnet reduces the likelihood of overlap but can't eliminate it completely.
 
-The Windows server could ping `lisas-macbook-air` (`100.101.215.58`) over Tailscale. From the Mac, the reverse test also succeeded:
+[See the VLAN Migration Dependency Checklist](24-vlan-migration-dependency-checklist.md).
 
-```bash
-/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.121.10.38
-nc -vz -G 5 100.121.10.38 3389
-```
+---
 
-Tailscale first responded through the Madrid DERP relay and then over a direct peer connection. TCP port 3389 was reachable, and I successfully established **direct RDP to `100.121.10.38`**. At that point, the SSH tunnel was no longer needed.
+## Result
 
-The original offline indication cleared during testing, but I did not establish exactly why it appeared. It should not be confused with the separate, confirmed LAN subnet-overlap problem.
+The Tailscale subnet router gives me an independent way to reach the home LAN from outside the network.
 
-### Practical takeaways
+The October 2026 trip exposed two separate issues: a confirmed subnet overlap that prevented direct access to `192.168.1.x` destinations, and an initially unavailable direct Tailscale connection to the Windows storage server.
 
-- A host can be running and accepting RDP locally even when it's unreachable from a traveling laptop.
-- Check the routing table before assuming Windows, RDP, or Tailscale itself is broken.
-- When two locations use the same LAN subnet, the operating system may send traffic to local Wi-Fi instead of the remote subnet router.
-- A Tailscale node's `100.x.x.x` address avoids the overlapping `192.168.1.x` destination, as long as the node is actually connected and the service is accessible.
-- An SSH local port forward through a reachable home node is a useful fallback when direct access fails.
-- Confirm each layer separately: LAN ping, TCP port, macOS routing, Tailscale peer ping, then application access.
+I verified that the server and RDP service were running, established access through an SSH tunnel, and later confirmed direct RDP using the server's Tailscale IP address.
 
-### Follow-up: Home network redesign
+The separate Surfshark incident also reinforced the need to check active VPN routes when diagnosing Internet connectivity.
 
-**Planned after returning home; not yet implemented.**
+These experiences are influencing the planned redesign of the default LAN addressing scheme and the way I approach remote-access troubleshooting.
 
-Review moving devices off the flat `192.168.1.0/24` default LAN into the existing management, server, user, security, test, and guest VLANs. Also consider a less common address range for any remaining general-purpose LAN. Before making changes, inventory fixed IPs, AT&T gateway settings, Proxmox management, switch addresses, OPNsense routing, DNS, Tailscale subnet advertisements, firewall rules, and service dependencies. Migrate incrementally and keep a documented rollback path. Changing the default LAN by itself is not a guarantee against future subnet overlaps.
+## Related Documentation
+
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [OPNsense Routing and Firewalling](05-opnsense.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [VLAN Migration Dependency Checklist](24-vlan-migration-dependency-checklist.md)
+- [Asset Inventory](02-asset-inventory.md)
