@@ -1,85 +1,124 @@
 # Storage and Backup Resilience
 
-## Purpose
+## Overview
 
-This document records the verified `storage01` platform and attached-storage
-layout, a real Proxmox backup-target incident, the evidence used to determine
-scope, the recovery steps, and the operational changes made afterward.
+My Proxmox cluster uses shared backup storage hosted on a Dell PowerEdge T20 running Windows.
 
-The incident demonstrates an important recovery principle:
+The storage server is connected to a Drobo over USB, and the backup directory is made available to Proxmox through SMB/CIFS.
 
-> Restore service from verified evidence, validate the complete recovery set,
-> and change the design so the same failure is less likely to recur.
+This arrangement works for the lab, but it has also produced some problems that taught me a great deal about backup recovery and storage dependencies.
 
-No passwords, device serial numbers, or personal directory contents are
-included.
+One incident involved accidentally deleting the directory that contained the Proxmox backup archives. Another occurred after a power outage, when Windows firewall behavior prevented Proxmox from reaching a perfectly healthy SMB share.
+
+I also encountered destination-side write errors when several cluster nodes backed up concurrently.
+
+This document covers the storage configuration, those incidents, the recovery process, and the operational changes made afterward.
 
 ---
 
-# 1. Verified Storage Host
+## 1. Storage Server
 
-| Component | Verified value |
+The storage host is `storage01` (`192.168.1.208`).
+
+| Component | Configuration |
 |---|---|
 | Hardware | Dell PowerEdge T20 |
-| CPU | Intel Xeon E3-1225 v3 at 3.20 GHz |
-| RAM | 32 GB |
-| BIOS | A20, dated 2019-08-19 |
-| TPM | Not present |
-| Secure Boot | Supported by UEFI but disabled during inspection |
-| Address | `192.168.1.208` |
-| Current role | SMB media/file storage and Proxmox backup target |
+| Processor | Intel Xeon E3-1225 v3, 3.20 GHz |
+| Memory | 32 GB |
+| BIOS | A20, dated August 19, 2019 |
+| Network address | `192.168.1.208` |
+| Main function | File storage and Proxmox backups |
+
+The server uses several local and external disks.
+
+The documented layout includes:
+
+| Volume | Storage | Role |
+|---|---|---|
+| `C:` | 1 TB-class SATA disk | Windows system disk |
+| `E:` | Partition on 5 TB-class USB disk | Movies |
+| Unmounted | HFS+ partition on same disk | Preserved Apple-formatted data |
+| `F:` | 1.5 TB-class USB disk | Secondary storage |
+| `G:` | Drobo Gen3 | Shared files and Proxmox backups |
+
+The Drobo volume is the backup destination used by Proxmox.
 
 ---
 
-# 2. Attached Storage
+## 2. Drobo Capacity
 
-| Volume | Device / layout | Filesystem | Role |
-|---|---|---|---|
-| `C:` | 1 TB-class SATA disk; 0.91 TiB visible | NTFS | Current system disk |
-| `E:` | 2.27 TiB partition on a 5 TB-class USB disk | NTFS | `MOVIES` |
-| Hidden | 2.27 TiB partition on the same USB disk | HFS+ | Preserved Apple-format data partition |
-| `F:` | 1.5 TB-class USB disk; 1.36 TiB visible | NTFS | Secondary external storage |
-| `G:` | Drobo Gen3 | NTFS | `T20-NAS` and Proxmox backup storage |
+The Drobo contains two 6 TB drives configured with single-disk protection.
 
-The Drobo contains two 6 TB drives with single-disk protection. Its 64 TB NTFS
-volume is thin provisioned and does not represent installed capacity.
+The recorded storage details were:
 
-```text
-Installed raw capacity:       12 TB (10.91 TiB actual)
-Protected usable capacity:   5.34 TB
-Used after backup rebuild:   232.77 GB
-Health:                      Good
-Firmware:                    4.2.3
-Interface:                   USB
-```
+| Item | Value |
+|---|---|
+| Raw installed capacity | 12 TB |
+| Protected usable capacity | 5.34 TB |
+| Logical NTFS volume | 64 TB |
+| Firmware | 4.2.3 |
+| Connection | USB |
 
-Drobo Dashboard is the authoritative capacity source. Windows and Proxmox see
-the logical 64 TB volume and can therefore report misleading free-space values.
+The distinction between logical and physical capacity is important.
+
+The Drobo exposes a large thin-provisioned NTFS volume to Windows.
+
+Windows and Proxmox can therefore report a capacity that greatly exceeds the space physically available on the drives.
+
+For actual capacity planning, I use Drobo Dashboard rather than relying solely on the filesystem size displayed by Windows or Proxmox.
 
 ---
 
-# 3. Incident Summary
+## 3. Proxmox Backup Configuration
 
-The directory backing the `ProxmoxBackups` SMB share was permanently removed
-during storage cleanup. Proxmox still retained the `t-20-backup` configuration,
-but the target became unavailable:
+The Proxmox storage identifier is:
+
+`t-20-backup`
+
+The SMB share is:
+
+`ProxmoxBackups`
+
+The documented connection is:
 
 ```text
-Storage: t-20-backup
-Server:  192.168.1.208
-Share:   ProxmoxBackups
-Path:    /mnt/pve/t-20-backup
-Type:    cifs
+Proxmox storage: t-20-backup
+Windows server:  storage01
+Server address:  192.168.1.208
+SMB share:       ProxmoxBackups
+Proxmox mount:   /mnt/pve/t-20-backup
 ```
 
-The lost directory contained backup history. The live guests remained intact.
+From a Proxmox node, I can check the target with:
 
-## Scope Determination
+```bash
+pvesm status
+pvesm list t-20-backup
+```
 
-Before attempting deleted-file recovery or creating new data on the Drobo,
-Proxmox task history was reviewed across all four nodes. The most recent job
-logs showed successful backups for the ten guests that still existed in the
-cluster:
+These commands tell me whether Proxmox recognizes the target and can access the available backup content.
+
+That is more meaningful than simply confirming that the Windows server is reachable.
+
+---
+
+## 4. Incident: Backup Directory Deleted
+
+During storage cleanup, the directory backing the `ProxmoxBackups` share was permanently removed.
+
+The Proxmox storage configuration still existed, but the backup target was no longer usable.
+
+The deleted directory contained historical Proxmox backup archives.
+
+The running VMs and containers were unaffected.
+
+### Establishing the Scope
+
+Before attempting file recovery, I checked the Proxmox task history across the cluster.
+
+I wanted to know which guests had been backed up recently and whether any workloads existed only inside the deleted backup set.
+
+The latest recorded backup coverage was:
 
 ```text
 pve01: 100 101 105 200 201 210
@@ -88,17 +127,23 @@ pve03: 500
 pve04: 320
 ```
 
-An older backup history entry for VM 320 corresponded to the same guest before
-its move to `pve04`, not a deleted unique guest. Because every backed-up guest
-still existed and was operational, deleted-file recovery was not pursued. The
-accepted loss was historical restore points, not unique workload data.
+All ten expected guests were still present in the cluster.
+
+An older backup record for VM 320 represented the same guest before it was moved to another node, not an additional unique workload.
+
+The loss was therefore historical recovery points rather than the only copy of a running system.
+
+That didn't make the deletion harmless, but it changed the recovery decision.
+
+I decided to rebuild the backup set rather than attempt deleted-file recovery on the Drobo.
 
 ---
 
-# 4. Windows Share Recovery
+## 5. Recreating the SMB Share
 
-A new restricted directory was created on the Drobo volume. In elevated
-PowerShell, the recovery pattern was:
+On `storage01`, I created a dedicated backup directory on the Drobo volume.
+
+The recovery commands used this pattern in an elevated PowerShell session:
 
 ```powershell
 $backupPath = 'G:\ProxmoxBackups'
@@ -111,7 +156,7 @@ icacls $backupPath /inheritance:r
 icacls $backupPath /grant:r `
     'NT AUTHORITY\SYSTEM:(OI)(CI)F' `
     'BUILTIN\Administrators:(OI)(CI)F' `
-    "${backupUser}:(OI)(CI)M"
+    "\${backupUser}:(OI)(CI)M"
 
 New-SmbShare `
     -Name 'ProxmoxBackups' `
@@ -121,54 +166,76 @@ New-SmbShare `
     -ChangeAccess $backupUser
 ```
 
-This avoids sharing the entire Drobo root and limits the backup account to
-modify access on the backup directory.
+The backup account is represented by a placeholder rather than publishing its actual name or credentials.
+
+The new configuration shares the dedicated backup directory rather than the root of the Drobo volume.
 
 ---
 
-# 5. Clearing Stale CIFS Mounts
+## 6. Clearing Stale CIFS Mounts
 
-Recreating the Windows share did not immediately restore Proxmox access. The
-Linux kernel still held the deleted share as a stale CIFS mount:
+Recreating the SMB share didn't immediately restore connectivity from Proxmox.
+
+The Linux clients still had stale mount state associated with the original deleted share.
+
+The errors included:
 
 ```text
-ls: cannot access '/mnt/pve/t-20-backup': Stale file handle
+Stale file handle
 CIFS: VFS: reconnect tcon failed
 ```
 
-The stale mount was detached on each node, then storage access was forced:
+On the affected Proxmox nodes, I checked the mount state:
+
+```bash
+findmnt /mnt/pve/t-20-backup
+```
+
+After confirming there were no active backup operations using the target, I detached the stale mount:
 
 ```bash
 umount /mnt/pve/t-20-backup
+```
+
+Then forced Proxmox to access the configured storage again:
+
+```bash
 pvesm list t-20-backup
 pvesm status
 ```
 
-Each node subsequently reported `t-20-backup` as active and returned an empty
-backup list, which was expected after recreating the directory.
+I repeated the checks on the relevant nodes because the cluster-wide storage configuration doesn't mean every node shares the same Linux kernel mount state.
+
+After recovery, Proxmox reported the storage as active.
+
+The initial backup list was empty, as expected after recreating the directory.
 
 ---
 
-# 6. Rebuilding and Verifying Backups
+## 7. Rebuilding the Backup Set
 
-The cluster-wide job was started manually to create a new recovery set. Nine
-guests completed successfully. VM 100 reached the end of its stream but failed
-while finalizing the compressed archive:
+I started the cluster-wide backup job manually to create a new recovery set.
+
+Nine guests completed successfully.
+
+The remaining guest, VM 100, failed at the end of its compressed backup stream.
+
+The error was:
 
 ```text
 zstd: /*stdout*: Resource temporarily unavailable
 ERROR: Backup of VM 100 failed
 ```
 
-The kernel log showed destination-side CIFS write errors during the period when
-four nodes were writing concurrently:
+Kernel logs also showed CIFS write errors while several nodes were writing concurrently to the storage server.
+
+The recorded error included:
 
 ```text
 CIFS: VFS: \\192.168.1.208 Error -14 sending data on socket to server
 ```
 
-Because subsequent backups succeeded and the target remained active, only VM
-100 was retried:
+Because the target was still active and the other backup jobs had succeeded, I retried only the failed guest.
 
 ```bash
 vzdump 100 \
@@ -178,30 +245,38 @@ vzdump 100 \
     --notes-template '{{guestname}}'
 ```
 
-The retry completed successfully. Final verification showed exactly one current
-archive for every expected guest:
+The retry completed successfully.
+
+### Verification
+
+I confirmed that the new backup set contained an archive for each expected guest.
 
 ```text
-1 100
-1 101
-1 105
-1 200
-1 201
-1 210
-1 300
-1 320
-1 400
-1 500
+VMID 100  — 1 archive
+VMID 101  — 1 archive
+VMID 105  — 1 archive
+CTID 200  — 1 archive
+CTID 201  — 1 archive
+VMID 210  — 1 archive
+VMID 300  — 1 archive
+VMID 320  — 1 archive
+VMID 400  — 1 archive
+VMID 500  — 1 archive
 ```
+
+This was the complete recovery set at the time of the incident.
+
+It isn't intended to represent the current guest inventory.
 
 ---
 
-# 7. Preventive Changes
+## 8. Backup Retention and Scheduling
 
-## Finite Retention
+After the incident, I changed the backup configuration to reduce unnecessary growth and avoid multiple nodes writing to the storage system simultaneously.
 
-The original storage policy retained everything indefinitely. It was replaced
-with:
+### Retention
+
+The recorded retention policy became:
 
 ```text
 keep-last=7
@@ -209,140 +284,203 @@ keep-weekly=4
 keep-monthly=3
 ```
 
-The policy preserves recent, weekly, and monthly recovery points without
-allowing unbounded growth on a target whose logical capacity exceeds its
-physical capacity.
+This replaced the earlier indefinite retention arrangement.
 
-## Staggered Jobs
+The goal was to preserve useful recovery history without allowing backups to grow without limit against the Drobo's finite physical capacity.
 
-The all-node job was replaced with per-node jobs:
+### Staggered Jobs
 
-| Node | Daily schedule |
-|---|---:|
-| `pve01` | `02:00` |
-| `pve02` | `04:00` |
-| `pve03` | `05:00` |
-| `pve04` | `06:00` |
+I replaced the all-node schedule with staggered per-node backups.
 
-Staggering reduces concurrent CIFS and USB write pressure on `storage01` and the
-Drobo.
+| Node | Daily start |
+|---|---|
+| `pve01` | 02:00 |
+| `pve02` | 04:00 |
+| `pve03` | 05:00 |
+| `pve04` | 06:00 |
 
-## Proxmox Thin-Pool Review
+The spacing reduces simultaneous CIFS and USB write pressure.
 
-The backup logs also exposed LVM-thin warnings on `pve01`. Investigation found:
+It doesn't guarantee that a backup destination can never become overloaded, but it removes the obvious overlap that contributed to the earlier write problems.
+
+---
+
+## 9. Proxmox Thin-Pool Maintenance
+
+While investigating backup problems, I also encountered LVM-thin warnings on `pve01`.
+
+The recorded starting state was:
+
+| Item | Value |
+|---|---|
+| Thin-pool data utilization | 33.79% |
+| Metadata utilization | 1.85% |
+| Free volume-group space | 16 GiB |
+| LXC 201 root filesystem | 85% used |
+
+I expanded the root filesystem for LXC 201 from 3 GiB to 6 GiB.
+
+That reduced its filesystem usage to approximately 42%.
+
+I also removed obsolete Proxmox VM snapshots.
+
+Afterward, the recorded thin-pool utilization was:
 
 ```text
-Initial thin-pool data use:       33.79%
-Initial metadata use:             1.85%
-Initial VG free space:            16.00 GiB
-LXC 201 root filesystem use:      85%
+Data:     22.78%
+Metadata: 1.18%
 ```
 
-LXC 201 was expanded from 3 GiB to 6 GiB, reducing filesystem utilization to
-42%. Obsolete VM snapshots were removed through Proxmox, reducing thin-pool data
-use to 22.78% and metadata use to 1.18%.
+### Auto-Extension Guard
 
-LVM monitoring remained active. A limited auto-extension guard was enabled:
+The documented thin-pool monitoring settings were:
 
 ```text
 thin_pool_autoextend_threshold=80
 thin_pool_autoextend_percent=4
 ```
 
-The 4% value fits within the current 16 GiB VG reserve. It is a safety guard,
-not a substitute for monitoring or future capacity expansion.
+The limited volume-group free space constrained how much automatic growth was possible.
+
+I consider those settings an additional safeguard rather than a replacement for capacity reviews.
 
 ---
 
-# 8. Operational Lessons
+## 10. Incident: SMB Unavailable After Power Outage
 
-## Post-Power-Loss SMB Availability Incident
+A later power outage caused another backup-storage problem.
 
-A later power outage produced a second storage-related failure mode.
+When `storage01` restarted, the Drobo volume returned normally.
 
-After `storage01` rebooted:
+The backup directory still existed, and the SMB service was running.
 
-- the Drobo returned normally as `G:`;
-- `G:\ProxmoxBackups` remained intact;
-- the `ProxmoxBackups` SMB share still existed;
-- the Windows `LanmanServer` service was running;
-- TCP port 445 was listening locally;
-- Proxmox nevertheless reported `t-20-backup` as unavailable;
-- Uptime Kuma independently reported TCP 445 on `storage01` as down.
+However, Proxmox reported `t-20-backup` as unavailable.
 
-The failure was therefore not caused by the Drobo, the SMB share, or the
-Proxmox storage definition.
+Uptime Kuma also reported that TCP port 445 on `storage01` was unreachable.
 
-The active Windows Ethernet connection had been classified as:
+### Local Windows Checks
+
+On the storage server, I verified that:
+
+- The Drobo was mounted as `G:`.
+- The `ProxmoxBackups` folder existed.
+- The SMB share was still configured.
+- `LanmanServer` was running.
+- Windows was listening on TCP 445.
+
+The useful PowerShell checks included:
+
+```powershell
+Get-Service LanmanServer
+Get-SmbShare
+Get-NetTCPConnection -LocalPort 445 -State Listen
+Get-NetConnectionProfile
+```
+
+The SMB configuration appeared healthy locally.
+
+### Finding the Cause
+
+The active Windows Ethernet network had been classified as:
 
 ```text
 NetworkCategory : Public
 ```
 
-Because Windows Firewall applies more restrictive policy to Public networks,
-remote SMB access from the LAN was blocked.
+The firewall policy associated with the Public profile prevented inbound SMB access from the lab network.
 
-The profile was corrected with:
+This explained why the server and share were functioning locally while remote clients couldn't connect.
+
+### Resolution
+
+I corrected the trusted Ethernet interface to use the Private profile.
+
+The recorded command was:
 
 ```powershell
 Set-NetConnectionProfile -InterfaceIndex 20 -NetworkCategory Private
 ```
 
-SMB access and Proxmox backup-storage availability returned without recreating
-the CIFS storage definition.
+The interface index was the observed value on `storage01` at that time. It shouldn't be assumed for another machine or configuration.
 
-This incident reinforced the need to troubleshoot storage dependencies in
-layers:
+### Verification
 
-```text
-attached storage
-    ↓
-Windows filesystem
-    ↓
-SMB share
-    ↓
-SMB server/listener
-    ↓
-Windows firewall/network profile
-    ↓
-network path
-    ↓
-Proxmox CIFS storage
-```
+After the change:
 
-A Proxmox storage alarm should therefore not be treated immediately as a
-storage-device or CIFS-configuration failure. Host networking and Windows
-firewall/profile state must also be validated after an unexpected reboot or
-power interruption.
+- TCP 445 became reachable.
+- Uptime Kuma's SMB availability check recovered.
+- Proxmox recognized `t-20-backup` again.
+- The existing share and storage definition remained intact.
 
-- A configured backup job is not proof that recoverable archives still exist.
-- Task logs can establish the scope and recency of a lost backup set.
-- Recreating a deleted SMB share may leave stale CIFS mounts on every client.
-- Cluster-wide parallel writes can expose limits in a Windows/USB-backed target.
-- Thin-provisioned logical capacity must not be confused with physical capacity.
-- Retention must be finite and aligned with the destination's real capacity.
-- Backup verification should account for every expected VM/LXC ID.
-- Hypervisor-capacity warnings can reveal separate guest-filesystem risks.
+No Drobo or CIFS storage rebuild was required.
 
-On August 26, 2026, recoverability was tested directly by restoring Docker VM
-210 from `t-20-backup` to temporary VMID 910. The restored VM was assigned a
-unique MAC address, prevented from automatically starting, and booted with its
-virtual NIC in a link-down state. Debian, the QEMU Guest Agent, Docker, and the
-Uptime Kuma container were successfully validated, including an HTTP response
-from the restored service. The temporary VM and disks were then removed. See
-[`21-proxmox-backup-restore-validation.md`](21-proxmox-backup-restore-validation.md)
-for the complete procedure.
+This was a network and firewall-profile problem, not a disk failure.
 
 ---
 
-# 9. Skills Demonstrated
+## 11. Restore Validation
 
-- Windows SMB share and NTFS permission administration
-- Proxmox CIFS storage troubleshooting
-- Linux mount and kernel-log analysis
-- Proxmox task-history and backup-scope validation
-- Targeted `vzdump` recovery
-- Backup retention and scheduling design
-- Drobo protected-capacity interpretation
-- LVM-thin capacity analysis and monitoring
-- Incident documentation and corrective-action planning
+Rebuilding backups wasn't the end of the recovery work.
+
+On August 26, 2026, I tested an actual restore of the Docker VM.
+
+The source was VMID 210, and the temporary restored guest was VMID 910.
+
+I kept the restored VM isolated from the production network to avoid duplicate IP addresses or other conflicts.
+
+I then checked that Debian booted, the QEMU Guest Agent responded, Docker worked, and the Uptime Kuma container was available.
+
+After verifying the service, I removed the temporary VM and its disks.
+
+The full procedure is recorded in [Proxmox Backup and Restore Validation](21-proxmox-backup-restore-validation.md).
+
+That exercise demonstrated recoverability more convincingly than checking that an archive existed.
+
+---
+
+## 12. Operational Checks
+
+For routine backup and storage monitoring, I focus on a few questions:
+
+1. Can Proxmox access the backup target?
+2. Did the scheduled backups actually complete?
+3. Are the expected guests represented?
+4. Is the physical Drobo capacity sufficient?
+5. Are there kernel or CIFS errors?
+6. Are local Proxmox thin pools approaching capacity?
+7. Have I tested a restore recently?
+
+Useful commands include:
+
+```bash
+pvesm status
+pvesm list t-20-backup
+lvs -a -o lv_name,lv_size,data_percent,metadata_percent
+```
+
+When the storage target is inaccessible, I also check the SMB server, Windows network profile, TCP 445 reachability, and mount state before modifying the storage definition.
+
+---
+
+## Result
+
+The storage incidents were frustrating, but they provided useful troubleshooting and recovery experience.
+
+The deleted backup directory required me to establish exactly what had been lost, recreate the share, clear stale mounts, rebuild backups, and verify the new recovery set.
+
+The concurrent write failures led to staggered schedules.
+
+The power-outage incident showed how a Windows network-profile change could interrupt SMB access even when the disks, filesystem, share, and server service were healthy.
+
+Finally, the isolated Docker VM restore demonstrated that an archive could be used to recover a working application.
+
+The overall backup design still has limitations, particularly its dependence on a single Windows server and USB-attached storage. Those are tradeoffs I need to account for as the lab grows.
+
+## Related Documentation
+
+- [Proxmox Backup and Disaster Recovery](01-proxmox-backup.md)
+- [Proxmox Cluster Build](03-proxmox-cluster-build.md)
+- [Homelab Operations Checklist](15-homelab-operations-checklist.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
+- [Backup and Restore Validation](21-proxmox-backup-restore-validation.md)
