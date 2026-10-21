@@ -113,19 +113,33 @@ Secure auth:      on
 The cluster currently uses local node storage for VM/LXC disks and shared remote
 backup storage rather than Ceph.
 
-## Recorded Proxmox Workload Placement
+## Proxmox Workload Placement — Verified October 20, 2026
 
-The following placement was verified after the fourth node was added and the
-selected workloads were migrated. It is a historical snapshot rather than a
-verified current placement. Consult the live Proxmox cluster before updating
-automation or performing maintenance based on these assignments:
+The following inventory was retrieved using the Proxmox cluster API on
+October 20, 2026. It records guest placement and running state at that time,
+not a guarantee of future placement or availability.
 
-| Node | Recorded workloads |
-|---|---|
-| `pve01` | `dc01`, `win11-01`, `sqlserver2025`, `apache-guacamole`, `pialert` |
-| `pve02` | `kali01`, `target01`, `docker` |
-| `pve03` | `nms01`, `adsb01`, `wazuh01` |
-| `pve04` | `vulnscan01`, `nb01` |
+| Node | VMID | Type | Guest | Observed state |
+|---|---:|---|---|---|
+| `pve01` | 100 | VM | `dc01` | Running |
+| `pve01` | 105 | LXC | `sqlserver2025` | Stopped |
+| `pve01` | 200 | LXC | `apache-guacamole` | Running |
+| `pve01` | 201 | LXC | `pialert` | Running |
+| `pve01` | 220 | VM | `fw01` | Running |
+| `pve02` | 210 | VM | `docker` | Running |
+| `pve02` | 300 | VM | `kali01` | Running |
+| `pve02` | 400 | VM | `target01` | Running |
+| `pve03` | 102 | VM | `nms01` | Running |
+| `pve03` | 103 | VM | `adsb01` | Running |
+| `pve03` | 500 | VM | `wazuh01` | Running |
+| `pve04` | 101 | VM | `unifi01` | Running |
+| `pve04` | 104 | VM | `gns3` | Running |
+| `pve04` | 106 | VM | `nb01` | Running |
+| `pve04` | 320 | VM | `vulnscan01` | Stopped |
+
+The cluster reported 15 guests: 13 running and 2 stopped.
+The previously documented `win11-01` was not present in this inventory.
+Its absence does not establish whether it was deleted or relocated.
 
 VM disks remain on each node's local storage. The shared `t-20-backup` CIFS
 target provides backup-based recovery; the cluster does not use Ceph or claim
