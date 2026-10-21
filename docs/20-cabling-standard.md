@@ -1,121 +1,144 @@
 # Ethernet Cabling and Labeling Standard
 
-## Purpose
+## Overview
 
-This document defines the Ethernet labeling and physical cable-record standard
-for the SOC/NOC homelab.
+As the homelab has grown, I've ended up with enough Ethernet cables that identifying connections by sight or memory is no longer practical.
 
-The objective is simple: a disconnected cable should be identifiable without
-tracing an unlabeled wire through the shelf or relying on memory.
+The cabling includes connections between Proxmox nodes, managed switches, storage systems, Raspberry Pis, the AT&T gateway, and other devices.
+
+I want to be able to disconnect a cable, identify its purpose, and reconnect it correctly without tracing the entire run.
+
+This document describes the labeling, color, and cable-record conventions I'm using.
+
+The physical labels identify the cables. The documentation records where they're connected.
 
 ---
 
-# 1. Cable ID Format
+## 1. Cable Identification
 
-Every permanent/semi-permanent Ethernet patch cable receives a unique ID:
+I use a simple numbered identification system:
 
 ```text
 C01
 C02
 C03
+C04
 ...
 ```
 
-The `C` identifies a cable and the two-digit number makes the IDs easy to sort,
-read, and extend.
+Each cable gets a unique identifier.
 
-Cable IDs are physical identifiers. A cable keeps its `C##` number unless it is
-retired or deliberately relabeled in the documentation.
+The number identifies the physical cable, not its VLAN or switch port.
+
+For example, if cable `C03` is moved from one switch port to another, it remains `C03`.
+
+I update the connection record rather than assigning a new cable number.
+
+This makes it possible to track physical changes without constantly relabeling equipment.
 
 ---
 
-# 2. Label Both Ends
+## 2. Labeling Both Ends
 
-Each Ethernet cable is labeled at **both ends**.
+Each Ethernet cable should have a label at both ends.
 
-The label should identify:
+A label includes its cable ID and, where useful, the connected device.
 
-1. cable ID;
-2. endpoint/device name;
-3. switch and switch port where useful.
-
-Example endpoint-side label:
+For example:
 
 ```text
-C02 PVE01
+C02 — PVE01
 ```
 
-Example switch-side record:
+At the switch end, the port information can also be recorded:
 
 ```text
-C02 PVE01
+C02 — PVE01
 SW01 Gi1
 ```
 
-The physical label template intentionally included a blank `SW01 Gi__` field so
-port assignments can be written at connection time.
+I prefer labels that are readable without removing the cable from the switch.
+
+A label should also be placed far enough from the RJ45 connector that it doesn't interfere with inserting or removing it.
+
+The two ends should be identifiable independently.
 
 ---
 
-# 3. Prepared Cable IDs
+## 3. Cable Color Convention
 
-The current prepared label set includes:
+I'm using different cable colors to help identify their intended functions.
 
-| Cable ID | Endpoint | Initial switch-port state |
+| Cable color | Purpose |
+|---|---|
+| Blue | LAN and compute |
+| Green | Storage |
+| Yellow | Network management |
+| Red | WAN |
+
+This is a visual convention, not a technical requirement.
+
+A blue cable might carry several tagged VLANs over a trunk connection, for example.
+
+The actual network configuration is determined by the switch, interface, and VLAN settings—not the cable color.
+
+Cable labels and port records remain the authoritative way to identify a connection.
+
+---
+
+## 4. Prepared Cable Labels
+
+The initial physical-rebuild plan established these cable identifiers.
+
+| Cable | Endpoint | Original planned connection |
 |---|---|---|
-| `C01` | BGW320 / upstream | `SW01 Gi8` accepted convention |
-| `C02` | `PVE01` | `SW01 Gi1` accepted convention |
-| `C03` | `PVE02` | `SW01 Gi2` accepted convention |
-| `C04` | `PVE03` | `SW01 Gi3` accepted convention |
-| `C05` | `PVE04` | `SW01 Gi4` accepted convention |
-| `C06` | `STORAGE01` | Record during rebuild |
-| `C07` | `MGMT01` | Record during rebuild |
-| `C08` | `DNS01` | Record during rebuild |
+| `C01` | AT&T BGW320 | `sw01` Gi8 |
+| `C02` | `pve01` | `sw01` Gi1 |
+| `C03` | `pve02` | `sw01` Gi2 |
+| `C04` | `pve03` | `sw01` Gi3 |
+| `C05` | `pve04` | `sw01` Gi4 |
+| `C06` | `storage01` | To be recorded |
+| `C07` | `mgmt01` | To be recorded |
+| `C08` | `dns01` | To be recorded |
 
-The port mapping for `C06`-`C08` is deliberately left to the physical rebuild
-rather than invented in advance.
+These are the labels prepared for the original physical rebuild.
 
----
+They should not automatically be treated as a verified inventory of every cable currently installed.
 
-# 4. Endpoint Naming
+In particular, additional network equipment and connections have been added since the initial plan.
 
-Use infrastructure names that match the repository:
-
-```text
-PVE01
-PVE02
-PVE03
-PVE04
-STORAGE01
-MGMT01
-DNS01
-SW01
-BGW320
-```
-
-Avoid vague labels such as:
-
-```text
-SERVER
-LAPTOP
-PI
-SWITCH
-```
-
-Those labels become ambiguous as the lab grows.
+I want to confirm each physical cable assignment before treating the record as current.
 
 ---
 
-# 5. NIC Labels
+## 5. Current Managed-Switch Connections
 
-Where a system has multiple Ethernet interfaces, label the **device/NIC** as well
-as the cable.
+The documented logical connections for `sw01`, the Cisco SG350-10 at `192.168.1.21`, include:
 
-This is especially important for Proxmox systems when one interface is used for
-existing management/home connectivity and another is later introduced for lab
-VLAN/trunk work.
+| Switch port | Connected system | Network role |
+|---|---|---|
+| Gi1 | `pve01` | Proxmox VLAN trunk |
+| Gi2 | `pve02` | Proxmox VLAN trunk |
+| Gi3 | `pve03` | Proxmox VLAN trunk |
+| Gi4 | `pve04` | Proxmox VLAN trunk |
+| Gi5 | `sw02` | UniFi switch uplink/trunk |
+| Gi8 | Upstream LAN | Flat-network uplink |
 
-A NIC label should describe the intended role, for example:
+`sw02` is the UniFi US-8 at `192.168.1.22`.
+
+This table describes the documented connections and roles. The actual physical cable IDs should be confirmed and entered when inspecting the installed wiring.
+
+That is particularly important because the Proxmox systems may have more than one Ethernet connection.
+
+I don't want a management connection confused with a VLAN trunk simply because both cables lead to the same physical computer.
+
+---
+
+## 6. Labeling Network Interfaces
+
+Where a device has multiple Ethernet adapters, I also want to identify the interface itself.
+
+Useful interface-role labels include:
 
 ```text
 MGMT
@@ -123,99 +146,130 @@ LAB
 TRUNK
 ```
 
-Do not commit MAC addresses or other unnecessary hardware identifiers to the
-public repository merely to distinguish NICs.
+For example, a Proxmox node may have one connection for the original management LAN and another for the managed VLAN network.
+
+The device label should make that distinction clear.
+
+When documenting the interface, I also record its Linux device name or Proxmox bridge assignment where relevant.
+
+Those software identifiers can change after hardware or adapter changes, so I verify them rather than relying exclusively on an old diagram.
 
 ---
 
-# 6. Cable Length Standard
+## 7. Cable Length and Routing
 
-Use the shortest cable that reaches comfortably without tension.
+I use cables long enough to reach comfortably without putting tension on the connectors.
 
-For same-shelf devices:
+I try to avoid unnecessary coils of cable, particularly around switches and small systems.
 
-- prefer short patch cables;
-- avoid large coils of unused Ethernet cable;
-- leave enough slack to remove or service a device;
-- do not create tension at the RJ45 connector.
+The main routing guidelines are:
 
-Longer runs should be reserved for actual shelf-to-shelf or wall-to-shelf paths.
+- Use short patch cables for nearby equipment.
+- Leave enough slack to remove or service a device.
+- Avoid tight bends and tension at connectors.
+- Keep large power bundles separate from data cabling where practical.
+- Use reusable hook-and-loop ties rather than tightly cinched plastic ties.
+- Keep switch ports and cable labels visible.
 
----
+I also avoid using the cables themselves to support equipment or adapters.
 
-# 7. Cable Management
-
-Use reusable hook-and-loop/Velcro ties for cable bundles.
-
-Reasons:
-
-- easy to reopen during troubleshooting;
-- less risk of crushing cable jackets than overtightened plastic zip ties;
-- easy to add/remove one cable;
-- supports repeated lab changes.
-
-Plastic zip ties may be useful for permanent non-data anchoring, but they should
-not be the default for frequently changed Ethernet bundles.
+The objective is to make future maintenance easier, not simply to make the installation look tidy.
 
 ---
 
-# 8. Switch-Port Record
+## 8. Maintaining the Port Record
 
-After the physical rebuild, maintain a simple authoritative table:
+A cable record needs to describe both the physical connection and the intended network role.
 
-| Port | Cable | Endpoint | Purpose / VLAN state |
-|---|---|---|---|
-| `Gi1` | `C02` | `pve01` | Flat/default initially; future role documented later |
-| `Gi2` | `C03` | `pve02` | Flat/default initially; future role documented later |
-| `Gi3` | `C04` | `pve03` | Flat/default initially; future role documented later |
-| `Gi4` | `C05` | `pve04` | Flat/default initially; future role documented later |
-| `Gi8` | `C01` | BGW320 / upstream | Initial upstream convention |
+I use the following format:
 
-Add `C06`-`C08` only after their actual ports are connected and verified.
+| Cable ID | Endpoint A | Endpoint B | Network role | Verified |
+|---|---|---|---|---|
+| `C02` | `pve01` | `sw01` Gi1 | VLAN trunk | Pending physical confirmation |
+| `C03` | `pve02` | `sw01` Gi2 | VLAN trunk | Pending physical confirmation |
+| `C04` | `pve03` | `sw01` Gi3 | VLAN trunk | Pending physical confirmation |
+| `C05` | `pve04` | `sw01` Gi4 | VLAN trunk | Pending physical confirmation |
 
----
+The switch endpoints and roles are documented, but the association with these original cable IDs still needs physical confirmation.
 
-# 9. Change Procedure
+Additional cables should be entered as their installed endpoints are verified.
 
-When moving a cable:
-
-1. identify the `C##` label;
-2. record the current switch port;
-3. disconnect only the intended cable;
-4. connect it to the new intended port;
-5. update the port record immediately;
-6. verify link and endpoint connectivity;
-7. update VLAN/access/trunk notes if the logical role changed.
-
-Do not wait until the end of a large recabling job to reconstruct the port map
-from memory.
+For the full network configuration, I use [Managed Switching and VLANs](04-network-vlans.md).
 
 ---
 
-# 10. Documentation and Evidence
+## 9. Moving or Replacing a Cable
 
-Useful evidence for the repository:
+When changing a physical connection, I use a short procedure:
 
-- a sanitized switch-port map;
-- a photo showing the `C##` label convention;
-- a photo of the completed cable bundle/route;
-- before/after shelf photographs;
-- the logical link between cable IDs and `sw01` ports.
+1. Identify the cable and both endpoints.
+2. Record its current switch port.
+3. Check whether the port is an access port or trunk.
+4. Disconnect only the intended cable.
+5. Connect it to the new port.
+6. Verify link state.
+7. Test the expected network connectivity.
+8. Update the cable and port records.
 
-Do not publish passwords, credentials, private configuration backups, or other
-sensitive information.
+The logical port configuration matters as much as the physical connection.
+
+Moving a cable from a trunk port to an access port, for example, can leave a Proxmox host reachable through one interface while disconnecting its VLAN guests.
+
+I therefore avoid assuming that two physically similar switch ports have equivalent configurations.
 
 ---
 
-# 11. Skills Demonstrated
+## 10. Troubleshooting Physical Connections
 
-This standard demonstrates:
+When a system unexpectedly loses network connectivity, I start by verifying the relevant cable and port.
 
-- physical-layer documentation;
-- structured cable identification;
-- switch-port mapping;
-- endpoint naming discipline;
-- serviceability planning;
-- change tracking;
-- troubleshooting readiness;
-- separation of physical and logical network state.
+I check whether the intended cable is connected, whether the switch shows a link, and whether the physical port matches the documented network role.
+
+For multiple simultaneous failures, I look for a shared uplink or switch dependency before replacing individual cables.
+
+On `sw01`, useful commands include:
+
+```text
+show vlan
+show version
+```
+
+I also inspect interface status and error counters as appropriate.
+
+A lit link indicator confirms physical connectivity at the Ethernet layer, but it doesn't establish that VLAN tagging, routing, or applications are functioning correctly.
+
+---
+
+## 11. Documentation and Photographs
+
+Photographs can help confirm the physical installation and make future changes easier.
+
+Useful records include:
+
+- A readable example of the cable-label format
+- Switch ports with connected cable IDs
+- Device interface labels
+- Overall cable routing
+- Before-and-after photographs when equipment is moved
+
+I want to keep the connection records current as the network changes.
+
+An accurate cable record is more useful than a polished diagram that no longer matches the hardware.
+
+---
+
+## Result
+
+The cabling standard provides a consistent way to identify the physical connections in the homelab.
+
+Cable numbers identify individual cables, colors indicate broad functions, and the port record describes how the devices are actually connected.
+
+The remaining work is to verify and document all physical cable assignments, particularly where the managed-switch infrastructure has changed since the original rebuild plan.
+
+## Related Documentation
+
+- [Physical Infrastructure](18-physical-infrastructure.md)
+- [Managed Switching and VLANs](04-network-vlans.md)
+- [Shutdown and Startup Runbook](19-shutdown-startup-runbook.md)
+- [Asset Inventory](02-asset-inventory.md)
+- [NOC Troubleshooting Runbook](13-noc-troubleshooting-runbook.md)
