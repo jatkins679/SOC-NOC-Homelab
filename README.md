@@ -174,6 +174,12 @@ It also feeds aircraft tracking services.
 
 [ADS-B receiver documentation](docs/22-adsb-flight-tracking.md)
 
+### IPTV DVR
+
+I use IPTVX on Apple TV with Dispatcharr and a Debian-hosted recording server. Recordings are written to the Windows storage server over SMB. I documented the stream-reconnection and preview problems I ran into, the FFmpeg changes that fixed them, and the Uptime Kuma checks that verify the storage is writable.
+
+[IPTV DVR and recording storage monitoring](docs/26-iptv-dvr-recording-monitoring.md)
+
 ### Remote VPS
 
 I've added a Linux VPS outside my home network, connected through Tailscale.
@@ -204,6 +210,7 @@ The detailed documentation is organized by subject.
 | Remote access | [Tailscale](docs/23-tailscale-remote-access.md) |
 | Network migration | [VLAN dependency checklist](docs/24-vlan-migration-dependency-checklist.md) |
 | Vulnerability scanning | [OpenVAS plan](docs/25-openvas-vulnerability-scanning.md) |
+| IPTV DVR and storage monitoring | [IPTVX / Dispatcharr](docs/26-iptv-dvr-recording-monitoring.md) |
 
 The [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md) connects specific skills to documented work in the lab.
 
