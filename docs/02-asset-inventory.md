@@ -137,7 +137,7 @@ not a guarantee of future placement or availability.
 | `pve04` | 106 | VM | `nb01` | Running |
 | `pve04` | 320 | VM | `vulnscan01` | Stopped |
 
-The cluster reported 15 guests: 13 running and 2 stopped.
+The cluster reported 15 guests: 13 running and 2 stopped **on October 20, 2026**. A subsequent addition is `fastchannels01`, VM 330 on `pve04`, verified running on October 25, 2026. The October 20 table above remains a dated snapshot.
 The previously documented `win11-01` was not present in this inventory.
 Its absence does not establish whether it was deleted or relocated.
 
@@ -221,13 +221,16 @@ Detection / investigation / evidence
 
 | Asset | Type / Platform | Address | Role | Status |
 |---|---|---:|---|---|
-| `docker` | Debian 13 VM / Docker Engine (VM 210) | `192.168.1.174` | Container application host for reverse proxy, dashboards, monitoring, metrics, and ADS-B support services | **Operational** |
+| `docker` | Debian 13 VM / Docker Engine (VM 210) | `192.168.1.174` | Container application host for reverse proxy, dashboards, monitoring, metrics, Channels DVR, Dispatcharr, and Samsung TV Plus | **Operational** |
+| `fastchannels01` | Ubuntu Server 24.04 / Docker Engine (VM 330, `pve04`) | `192.168.1.228` | Dedicated FastChannels source aggregator; admin on TCP 5523; monitored by Uptime Kuma | **Operational** |
 | `nb01` | NetBox VM (VM 106) | `10.10.10.15` | IPAM/DCIM and infrastructure source-of-truth service | **Operational** |
 | `apache-guacamole` | Proxmox LXC | `192.168.1.151` | Browser-based remote access gateway | **Operational** |
 | `sqlserver2025` | Ubuntu LXC / Microsoft SQL Server | DHCP; `192.168.1.165` observed | SQL Server learning / application service | **Operational / DHCP** |
 | `pialert` | Proxmox LXC | DHCP; `192.168.1.225` observed | Network-presence and device-awareness service | **Operational / DHCP** |
 
-The `docker` VM currently hosts the primary containerized application stack, including Nginx Proxy Manager (`80/81/443`), Homarr (`7575`), Uptime Kuma (`3001`), Grafana (`3000`), and Prometheus (`9090`). Prometheus also consumes host metrics from deployed exporters.
+The `docker` VM currently hosts the primary containerized application stack, including Nginx Proxy Manager (`80/81/443`), Homarr (`7575`), Uptime Kuma (`3001`), Grafana (`3000`), Prometheus (`9090`), Channels DVR (`8089`), Dispatcharr (`9191`), and the Samsung TV Plus connector (`8182`).
+
+`fastchannels01` runs separately on `pve04`, with Docker restart policy `unless-stopped`, Proxmox VM autostart, and an active Uptime Kuma HTTP check. Its 06:00 daily backup is included in the existing pve04 all-VM job; an October 25 backup was restored and boot-tested in an isolated temporary VM. See [Channels DVR and FastChannels Media Services](27-channels-dvr-fastchannels.md). Prometheus also consumes host metrics from deployed exporters.
 
 NetBox on `nb01` provides IPAM/DCIM documentation for the segmented lab and is reachable on the management VLAN at `10.10.10.15`.
 
@@ -434,6 +437,7 @@ where that monitoring has already been exercised or documented.
 | `10.10.10.15` | `nb01` |
 | `10.10.40.20` | `wazuh01` |
 | `192.168.1.208` | `storage01` |
+| `192.168.1.228` | `fastchannels01` (VM 330 on `pve04`) |
 | `10.10.50.113` | `kali01` |
 | `192.168.1.185` | `tailscale01` |
 | `10.10.60.10` | `target01` |
@@ -519,7 +523,9 @@ Attack / detection
 └── vulnscan01
 
 Additional services
+├── fastchannels01 (VM 330, pve04; FastChannels)
 ├── docker
+│   ├── Channels DVR / Dispatcharr / Samsung TV Plus
 │   ├── Nginx Proxy Manager
 │   ├── Homarr
 │   ├── Uptime Kuma
