@@ -497,6 +497,71 @@ The original staging note is retained as historical evidence. The managed-switch
 
 ---
 
+## Ticket 16 — Pi-hole DNS Rate Limiting Triggered by FastChannels Plex EPG
+
+**Type:** Service incident  
+**Priority:** P3  
+**Date:** October 26, 2026 (PDT)  
+**Affected systems:** `dns01` — `192.168.1.20`; `docker` — `192.168.1.174`  
+**Services:** Pi-hole DNS, Uptime Kuma monitoring, FastChannels  
+**Status:** Resolved — monitoring follow-up pending
+
+### Problem
+
+Uptime Kuma intermittently marked my Pi-hole DNS monitor as down, reporting `EREFUSED` and `ETIMEOUT` for A-record lookups of `example.com`. I first suspected an upstream DNS problem, but direct queries to Pi-hole succeeded, and `pihole-FTL` had been running continuously since September 3.
+
+### Investigation
+
+From `docker`, I queried Pi-hole directly and compared the host's resolver:
+
+```bash
+dig @192.168.1.20 example.com A +time=3 +tries=1
+dig @192.168.1.20 example.org A +time=5 +tries=1
+resolvectl dns
+```
+
+The lookups succeeded (4 ms and 28 ms respectively). One earlier response included `EDE: 3 (Stale Answer)`, but a subsequent uncached lookup completed successfully. This did not establish an upstream outage.
+
+The decisive evidence came from `/var/log/pihole/FTL.log` on `dns01`:
+
+```text
+09:18:29 Rate-limiting 192.168.1.174
+09:20:53 Ending rate-limitation of 192.168.1.174
+12:20:17 Rate-limiting 192.168.1.174
+12:22:53 Ending rate-limitation of 192.168.1.174
+```
+
+The second event coincided with Uptime Kuma failures. Counting `query[A]` and `query[AAAA]` records from `192.168.1.174` in `/var/log/pihole/pihole.log` from 12:19–12:23 PDT found **24,968 requests** for `epg.provider.plex.tv` out of **25,061 requests** counted for that client (about 99.6%).
+
+FastChannels logs matched the timing: its Plex scraper began at 12:20:03 PDT, fetched 699 channels, attempted guide requests across five days (3,495 channel-day tasks), and then reported DNS resolution failures. A similar scrape occurred around 09:18 PDT.
+
+### Root Cause
+
+FastChannels' interface had always shown Plex as off, but the persisted SQLite `sources` record showed `name='plex'`, `is_enabled=1`, and `scrape_interval=180` minutes. The background scraper was therefore enabled despite what the interface appeared to indicate. The resulting DNS request burst triggered Pi-hole's per-client rate limiting, also affecting Uptime Kuma's queries from the same Docker host.
+
+### Resolution
+
+I backed up FastChannels' SQLite database using Python's SQLite backup API and checked its integrity. I then changed only the Plex source's `is_enabled` field from `1` to `0`, confirmed the change, and restarted the FastChannels container.
+
+After startup, FastChannels logged:
+
+```text
+[disabled-source-sweep] source=plex was disabled but still had channels
+— deleted 699 channels and 0 programs
+```
+
+I did not change Pi-hole's rate limiting or remove other IPTV providers. No Plex credentials or session tokens are reproduced here.
+
+### Verification
+
+The `plex` database record remained `is_enabled=0` after the container restart. FastChannels' HTTP service recovered and returned HTTP 302. Pi-hole's latest recorded Plex query was 12:21:03 PDT, its rate limit ended at 12:22:53 PDT, and at 12:34 PDT no newer matching events appeared. Uptime Kuma subsequently showed all monitors green.
+
+**Follow-up:** Confirm there is no further Plex scraping at the next three-hour scheduling opportunity. The observed service recovery is verified, but long-term recurrence prevention had not yet been observed over a complete scheduler cycle when this ticket was written.
+
+**Lesson:** A monitoring failure can be a secondary symptom of another service generating excessive traffic. Correlating timestamps across application logs and DNS server logs identified the cause without weakening DNS protections.
+
+---
+
 ## Example Escalation Notes
 
 The following two cases are **illustrative handoff examples**, not claims of additional completed incidents.
