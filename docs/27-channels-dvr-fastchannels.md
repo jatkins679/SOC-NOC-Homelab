@@ -2,9 +2,11 @@
 
 ## Overview
 
-I added Channels DVR and a separate FastChannels server to organize free live-TV sources alongside my existing IPTV services. This uses the Proxmox cluster, Docker, the Windows NAS, and Uptime Kuma monitoring.
+I wanted to bring the free live-TV sources I've been experimenting with into one guide on Apple TV. I already had Dispatcharr and IPTVX running, but I also wanted to try Channels DVR and see how well it worked with the different free providers.
 
-**Status: operational and recovery-tested on October 25, 2026.** The FastChannels backup was tested by restoring it to an isolated temporary VM and verifying that its local web interface returned HTTP 200. This validates a basic application boot, not every individual channel or recording.
+I installed Channels DVR on my existing `docker` VM and set up FastChannels on its own Proxmox VM. Keeping FastChannels separate was deliberate: an earlier attempt on the Docker VM was followed by serious memory pressure and a lockup. I didn't establish that FastChannels alone caused the problem, but I didn't want another source scan affecting the rest of my services.
+
+By October 25, 2026, the feeds were working, Uptime Kuma was monitoring FastChannels, and I'd completed a backup and an isolated restore test. The restore confirmed that Ubuntu and the FastChannels web interface would start. I haven't tested every individual channel from a restored VM.
 
 ## Architecture
 
@@ -34,7 +36,7 @@ Monitoring: Uptime Kuma — docker (192.168.1.174:3001)
 Backups:    pve04 -> t-20-backup -> storage01 (192.168.1.208)
 ```
 
-These addresses refer to the current internal homelab, not public-facing endpoints. The older IPTVX/Dispatcharr recording arrangement is documented separately in [IPTV DVR and Recording Storage Monitoring](26-iptv-dvr-recording-monitoring.md).
+All of these addresses are on my internal network. I'm not publishing the services directly to the Internet. The earlier IPTVX recording setup is documented separately in [IPTV DVR and Recording Storage Monitoring](26-iptv-dvr-recording-monitoring.md).
 
 ## System inventory
 
@@ -47,13 +49,13 @@ These addresses refer to the current internal homelab, not public-facing endpoin
 | Uptime Kuma | Docker on `docker` | `192.168.1.174:3001` |
 | Shared backup storage | `storage01` | `192.168.1.208`, CIFS `t-20-backup` |
 
-VM 330 runs Ubuntu Server 24.04, two vCPUs, 4 GiB RAM, and a 24 GiB virtual disk. Its Docker Compose project is in `/home/jatkins/fastchannels`. The container has a 2 GiB memory limit, a combined 3 GiB memory-and-swap limit, and two persistent named volumes for application data and Android Debug Bridge data.
+For the dedicated VM, I allocated two vCPUs, 4 GiB RAM, and a 24 GiB virtual disk and installed Ubuntu Server 24.04. I keep its Docker Compose files in `/home/jatkins/fastchannels`. The container has a 2 GiB memory limit, a combined 3 GiB memory-and-swap limit, and two persistent named volumes for application data and Android Debug Bridge data.
 
-The container restart policy is `unless-stopped`; Proxmox has `onboot: 1` and `startup: order=3,up=30` for VM 330. The latter waits 30 seconds **after** VM 330 starts before moving to the next VM; it does not delay VM 330's own boot.
+After checking that the container was running normally, I changed its restart policy from `no` to `unless-stopped`. I also enabled VM 330's automatic startup in Proxmox with `onboot: 1` and `startup: order=3,up=30`. The 30 seconds is the delay **after** this VM starts, before Proxmox starts the next VM. It isn't a delay before FastChannels boots.
 
 ## Source feeds and numbering
 
-I use dedicated FastChannels feeds rather than importing the Default feed, which would mix sources and can create duplicates. Each feed has a single source filter and uses the mixed playlist/guide option supported by this installation.
+I added providers one at a time: scrape, audit the channels, approve the ones that work, and create a separate feed for each provider. I didn't import the Default feed because that would make it too easy to bring in the same channels twice. Each dedicated feed uses one source and the mixed playlist/guide option.
 
 | Source | Starting channel number | Notes |
 |---|---:|---|
@@ -66,7 +68,7 @@ I use dedicated FastChannels feeds rather than importing the Default feed, which
 | Zeam | 35000 | 412 channels and 118,757 EPG records discovered in the documented scrape |
 | Local Now | 40000 | Local/regional news, weather, entertainment |
 
-These numbers are the feed starting values used or prescribed during setup; verify current assignments in the FastChannels UI before reusing a range. User testing confirmed playback and EPG for Local Now and the other integrated sources. A healthy source feed does not guarantee that every individual channel will remain available. I do not attempt to bypass DRM or HTTP 403 restrictions.
+The table records the starting numbers I used or planned during setup. Before adding another feed, I check the current assignments to avoid conflicts. I confirmed that the integrated sources were working in Channels DVR, including Local Now's playback and guide data. That doesn't mean every single stream will always work. Some PBS channels are DRM-protected, and I left blocked or dead Free Networks streams out rather than trying to work around them.
 
 ## Operations
 
@@ -86,13 +88,15 @@ df -h /
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5523/admin/
 ```
 
-To inspect source status, channel review, audit results, feeds and their guide modes, use the FastChannels admin UI. The live TV clients connect to Channels DVR; individual FastChannels source feeds are added there through their dedicated **Add to Channels DVR** actions.
+I use the FastChannels admin page to check source status, audits, channel approvals, and feed settings. Once a feed is ready, I use its **Add to Channels DVR** action. The Apple TV then uses Channels DVR rather than connecting to each provider separately.
 
 ### Resource investigation
 
-After importing several providers, Docker reported approximately 533 MiB RAM in use and 0.45% CPU during an idle check. A previous CPU reading around 101% occurred while the system was performing source work, and the host later showed a low load average. The root filesystem was 63% used (approximately 7.8 GiB available). Docker reported a large FastChannels image (7.6 GB) and roughly 634 MB of persistent data. Image and filesystem figures have different accounting methods and should not be added directly.
+At one point I saw Docker report about 101% CPU usage. I checked the running processes and logs instead of changing the limits immediately. Zeam was scraping and auditing hundreds of channels. Later, at idle, FastChannels was using about 533 MiB of RAM and 0.45% CPU.
 
-The immediate decision was to preserve the installation and monitor free disk space, rather than run a destructive Docker prune.
+The root filesystem was already 63% full, with about 7.8 GiB free. Docker reported a 7.6 GB FastChannels image and around 634 MB of persistent data. Those numbers use different accounting methods, so I didn't try to add them together to explain the filesystem total.
+
+I left the installation alone instead of running `docker system prune`. I'll keep an eye on free space, especially before updating the image.
 
 ### Uptime Kuma
 
@@ -102,11 +106,11 @@ Uptime Kuma on `docker (192.168.1.174:3001)` has an HTTP monitor named `fastchan
 http://192.168.1.228:5523/admin/
 ```
 
-The monitor uses a 60-second interval, three retries, and a 10-second timeout; it was confirmed green. This proves the web UI responds, **not** that every channel is playable or EPG data is current.
+I set the monitor to check every 60 seconds, with three retries and a 10-second timeout. It turned green after I saved it. That tells me the web interface is answering, but not whether individual streams or guide updates are working.
 
 ## Backup configuration
 
-VM 330 is included in the existing **all-VM** backup schedule for pve04:
+I checked the backup jobs before adding anything new. `pve04` already had a daily **all-VM** backup, so VM 330 was covered without creating another job:
 
 | Setting | Value |
 |---|---|
@@ -122,24 +126,23 @@ The first verified backup was:
 t-20-backup:backup/vzdump-qemu-330-2026_10_25-18_23_19.vma.zst
 ```
 
-The archive was approximately 6.8 GB and passed `zstd -t`. Snapshot backups can be crash-consistent rather than fully application-consistent when the app is writing data.
+The first backup was about 6.8 GB. I ran `zstd -t` against it, and the compressed archive passed. That's worth checking, but it isn't the same as actually restoring the VM. Also, because the backup runs in snapshot mode, files being written during the backup might not be fully application-consistent.
 
 ## Recovery test: October 25, 2026
 
-1. Restored the backup to **VM 331**, keeping production VM 330 running.
-2. Renamed it `fastchannels-restore-test`.
-3. Disabled automatic startup with `onboot: 0`.
-4. Disconnected its virtual NIC using `link_down=1` to prevent an IP/hostname conflict.
-5. Booted VM 331 through Proxmox and used the local console.
-6. Confirmed its FastChannels web endpoint at `http://127.0.0.1:5523/admin/` responded **HTTP 200**.
-7. Shut down VM 331, destroyed the temporary VM and its disk, and checked that production VM 330 was still running and the original backup remained available.
+A backup file doesn't do me much good if I can't restore it. I restored this one to **VM 331**, leaving production VM 330 running. The restored VM initially had the same hostname, network settings, and automatic-start configuration as the original, so I changed those before booting it.
 
-This establishes that the backup can be decompressed, restored, booted, and used to start the web interface. It does not establish comprehensive stream playback or end-to-end recording recovery.
+I renamed the test machine `fastchannels-restore-test`, turned off automatic startup (`onboot: 0`), and disconnected its virtual network adapter (`link_down=1`). I wanted to avoid having two machines trying to use `192.168.1.228`.
+
+I booted VM 331 and logged in through the Proxmox console. The local FastChannels page at `http://127.0.0.1:5523/admin/` returned **HTTP 200**. That was enough to verify the basic restore and application startup. It wasn't a full test of every TV stream or the DVR recording path.
+
+Once I'd finished, I shut down and deleted VM 331 and its disk. I checked that VM 330 was still running and that the backup file was still on `t-20-backup`.
 
 ## Remaining work
 
-- Monitor filesystem growth and leave space for future container image updates.
-- Recheck streams and EPG after provider-side changes.
-- Periodically test recovery from a newer backup.
-- Keep tokens, account credentials, and private provider URLs out of this public repository.
-- Treat source-count and channel-number records as snapshots, not permanent guarantees.
+- Keep an eye on disk space before future Docker image updates.
+- Recheck channel streams and guide data when a provider changes something.
+- Restore another backup periodically instead of assuming the daily job is enough.
+- Keep tokens, passwords, and private provider URLs out of this public repository.
+
+Channel counts and numbering in this page are a record of the setup at this point in time, not a promise that the provider catalogs will stay the same.
