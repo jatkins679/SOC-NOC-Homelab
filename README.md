@@ -180,6 +180,12 @@ I use IPTVX on Apple TV with Dispatcharr and a Debian-hosted recording server. R
 
 [IPTV DVR and recording storage monitoring](docs/26-iptv-dvr-recording-monitoring.md)
 
+### Channels DVR and FastChannels
+
+I added Channels DVR on `docker` and a dedicated FastChannels VM (`fastchannels01`, VM 330 on `pve04`) to consolidate free live-TV feeds. The setup includes source-specific playlists, Uptime Kuma monitoring, automatic startup, daily Proxmox backups, and a tested isolated restore.
+
+[Channels DVR and FastChannels media services](docs/27-channels-dvr-fastchannels.md)
+
 ### Remote VPS
 
 I've added a Linux VPS outside my home network, connected through Tailscale.
@@ -211,6 +217,7 @@ The detailed documentation is organized by subject.
 | Network migration | [VLAN dependency checklist](docs/24-vlan-migration-dependency-checklist.md) |
 | Vulnerability scanning | [OpenVAS plan](docs/25-openvas-vulnerability-scanning.md) |
 | IPTV DVR and storage monitoring | [IPTVX / Dispatcharr](docs/26-iptv-dvr-recording-monitoring.md) |
+| Live TV and FastChannels | [Channels DVR / FastChannels](docs/27-channels-dvr-fastchannels.md) |
 
 The [SOC/NOC Skills Matrix](docs/11-soc-noc-skills-matrix.md) connects specific skills to documented work in the lab.
 
