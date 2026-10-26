@@ -205,6 +205,28 @@ Upstream DNS
 
 I also check whether the problem affects all clients or only a particular VLAN.
 
+### Case Study — Healthy Pi-hole, Failed DNS Monitor (October 26, 2026)
+
+Uptime Kuma reported `EREFUSED` and `ETIMEOUT` against `dns01` (`192.168.1.20`). Direct `dig` tests succeeded and the Pi-hole FTL service had not restarted. The more useful evidence was Pi-hole's own `FTL.log`: it had rate-limited `docker` (`192.168.1.174`) at 09:18 and 12:20 PDT.
+
+Checking `pihole.log` by client, query type, domain, and incident time identified 24,968 lookups to `epg.provider.plex.tv` within the afternoon incident window. FastChannels' Plex scraper logs matched the same time. Although Plex had always appeared disabled in FastChannels' UI, its persisted `sources.is_enabled` value was `1`.
+
+After backing up the SQLite database, I set that single flag to `0` and restarted FastChannels. The application removed 699 Plex channels, its HTTP endpoint recovered, and Uptime Kuma returned to green.
+
+For similar incidents I now check:
+
+```bash
+# On dns01: rate-limit events and DNS query samples
+sudo grep -i 'rate-limit' /var/log/pihole/FTL.log | tail -20
+sudo grep '192.168.1.174' /var/log/pihole/pihole.log | tail -30
+
+# On docker: direct Pi-hole resolution and application logs
+dig @192.168.1.20 example.com A +time=3 +tries=1
+docker logs --since 30m fastchannels 2>&1 | grep -i plex | tail -30
+```
+
+A green monitor following the fix confirms immediate recovery; a full scraper interval without new Plex traffic is still needed to establish that the recurrence has stopped. The complete record is [Ticket 16](14-soc-noc-ticket-examples.md#ticket-16--pi-hole-dns-rate-limiting-triggered-by-fastchannels-plex-epg).
+
 ### Active Directory DNS
 
 Domain-joined Windows clients use `dc01` (`10.10.20.10`) for domain DNS and service discovery.
