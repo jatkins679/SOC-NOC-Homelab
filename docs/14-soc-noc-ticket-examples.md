@@ -562,6 +562,91 @@ The `plex` database record remained `is_enabled=0` after the container restart. 
 
 ---
 
+## Ticket 17 — OliveTin Channel Lineup Monitor Fails on Source Name with Slash
+
+**Type:** Application automation incident  
+**Priority:** P4  
+**Date:** October 26, 2026 (PDT)  
+**Affected system:** `docker` — `192.168.1.174`  
+**Services:** OliveTin-for-Channels 2026.10.08; Channels DVR `192.168.1.174:8089`  
+**Status:** Resolved — upstream fix pending
+
+### Problem
+
+I enabled OliveTin-for-Channels' **Channel Lineup Change Notifications** to check my Channels DVR sources every 60 minutes. The initial run crashed before finishing its source inventory:
+
+```text
+FileNotFoundError: [Errno 2] No such file or directory:
+'/config/192.168.1.174-8089_data/FastChannels_PBS_/_Public_Television.log'
+```
+
+My Channels DVR source was named `FastChannels PBS / Public Television`.
+
+### Investigation
+
+I inspected the script inside the OliveTin container and checked that the monitoring process was no longer running:
+
+```bash
+docker exec olivetin grep -n -A 12 'def create_local_file_name' /config/channels_dvr_monitor_channels.py
+docker exec olivetin sh -c "ps aux | grep '[c]hannels_dvr_monitor_channels.py' || true"
+```
+
+At line 533, the function replaced spaces with underscores but didn't sanitize path separators:
+
+```python
+return os.path.join(Data_Subdirectory_Path, name.replace(' ', '_'))
+```
+
+Linux therefore interpreted the slash in the channel source name as a directory separator.
+
+### Resolution
+
+I backed up `/home/jatkins/olivetin/config/channels_dvr_monitor_channels.py` before applying a targeted change to **only** the return statement in `create_local_file_name()`:
+
+```python
+return os.path.join(
+    Data_Subdirectory_Path,
+    name.replace(' ', '_').replace('/', '_').replace(chr(92), '_')
+)
+```
+
+The patch replaces forward and backward slashes with underscores, keeping source-derived log filenames inside the intended data directory. I validated Python syntax with `ast.parse()` before writing the change.
+
+The original script backup is `channels_dvr_monitor_channels.py.backup-20261027-010025` in the same configuration directory. The timestamp is UTC; the incident occurred on October 26 local time.
+
+### Verification
+
+I restarted the monitoring action with a 60-minute interval and no email or SMS alerts. OliveTin reported the background process running, and the per-source log files appeared.
+
+The original failing source was successfully processed:
+
+```text
+New source with 29 channels: "FastChannels PBS / Public Television"
+See file /config/192.168.1.174-8089_data/FastChannels_PBS___Public_Television.log
+```
+
+I then changed `UPDATE_SCRIPTS` from `true` to `false` in `/home/jatkins/olivetin/compose.yaml` and recreated only the OliveTin container. Afterward, `docker inspect` confirmed `UPDATE_SCRIPTS=false` and `UPDATE_YAMLS=false`, the patch remained in place, and the monitor restarted automatically:
+
+```text
+python3 -u /config/channels_dvr_monitor_channels.py -i 192.168.1.174 -p 8089 -f 60
+Next check: 2026-10-26 20:31:04
+```
+
+The successful restart and initial inventory were verified; ongoing hourly checks should still be reviewed.
+
+### Remaining Issues and Follow-up
+
+- The OliveTin container intentionally does **not** mount `/var/run/docker.sock`, so Docker-dependent OliveTin features report that the API is unavailable. This is separate from the monitor failure.
+- OliveTin startup actions `EZ-Start` and `List Running Projects` still report ACL denials under the `startup` identity. The authenticated `jatkins` account has working admin access, and the lineup monitor runs. I did not weaken the access controls to suppress these warnings.
+- `UPDATE_SCRIPTS=false` is a temporary safeguard, not a permanent update policy. Review new upstream scripts and the filename handling before re-enabling automatic updates. See [Channels DVR and FastChannels Media Services](27-channels-dvr-fastchannels.md).
+- Keep the corrected script and its backup private to the host. Do not publish authentication settings or provider playlist URLs.
+
+**Result:** Resolved locally. The 29-channel PBS source no longer crashes lineup monitoring after a restart.
+
+**Lesson:** Source names supplied by external applications are not safe filesystem paths. Validate and sanitize them before using them as filenames, and preserve a rollback copy before patching third-party scripts.
+
+---
+
 ## Example Escalation Notes
 
 The following two cases are **illustrative handoff examples**, not claims of additional completed incidents.
