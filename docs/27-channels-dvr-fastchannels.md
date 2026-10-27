@@ -138,6 +138,49 @@ I booted VM 331 and logged in through the Proxmox console. The local FastChannel
 
 Once I'd finished, I shut down and deleted VM 331 and its disk. I checked that VM 330 was still running and that the backup file was still on `t-20-backup`.
 
+## OliveTin-for-Channels maintenance note — October 26, 2026
+
+I added OliveTin-for-Channels on `docker (192.168.1.174)` to manage Channels DVR at `192.168.1.174:8089`. The authenticated web dashboard works under my `jatkins` account. Its post-install check reached Channels DVR with HTTP 200 and showed the DVR data and log mounts. The channel-inventory action successfully found 14 DVR sources and wrote a CSV file.
+
+I also enabled **Channel Lineup Change Notifications** at a 60-minute interval, with local logs only (no email or SMS). Its first run failed because a source named `FastChannels PBS / Public Television` contained a slash. The Python script used a source name directly to construct a log filename without replacing path separators. The verified correction in `/home/jatkins/olivetin/config/channels_dvr_monitor_channels.py` is:
+
+```python
+return os.path.join(
+    Data_Subdirectory_Path,
+    name.replace(' ', '_').replace('/', '_').replace(chr(92), '_')
+)
+```
+
+The original script was backed up as `channels_dvr_monitor_channels.py.backup-20261027-010025`. After the patch, the monitor generated `FastChannels_PBS___Public_Television.log` for the 29-channel source and continued running.
+
+### Update protection and maintenance
+
+I changed `/home/jatkins/olivetin/compose.yaml` to:
+
+```yaml
+UPDATE_YAMLS: "false"
+UPDATE_SCRIPTS: "false"
+```
+
+I backed up the Compose file, validated it with `docker compose config --quiet`, then recreated only the OliveTin service. `docker inspect` confirmed both settings were `false`. The corrected script remained in place, and the monitor was running again after the recreation.
+
+**This is a temporary local patch.** Until the upstream monitor script fixes filename sanitization, leave automatic script replacement disabled. Periodically review upstream releases manually, compare the affected function, back up the working version, and only re-enable `UPDATE_SCRIPTS` after testing the replacement. The change does not freeze the Docker image itself or prevent someone from manually overwriting the script.
+
+Useful read-only checks on `docker (192.168.1.174)`:
+
+```bash
+docker inspect olivetin --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^UPDATE_'
+docker exec olivetin sh -c "ps aux | grep '[c]hannels_dvr_monitor_channels.py' || true"
+docker exec olivetin tail -15 /config/192.168.1.174-8089_data/last_activity.log
+grep -n -A 12 'def create_local_file_name' /home/jatkins/olivetin/config/channels_dvr_monitor_channels.py
+```
+
+The Docker API socket remains deliberately unmounted from OliveTin. Docker-dependent actions produce socket errors but Channels DVR operations work. Two startup actions also log ACL denials under the separate `startup` identity; I haven't relaxed the access controls to address those warnings.
+
+The complete investigation and verification are recorded in [Ticket 17 — OliveTin Channel Lineup Monitor](14-soc-noc-ticket-examples.md). No account credentials, access tokens, or subscription stream URLs are stored in this documentation.
+
+---
+
 ## Remaining work
 
 - Keep an eye on disk space before future Docker image updates.
