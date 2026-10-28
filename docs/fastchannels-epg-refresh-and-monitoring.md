@@ -57,7 +57,7 @@ Manual start queues both sources when successful; inspect worker log for each `S
 
 ## Freshness monitoring — installed 2026-10-28
 
-The **FastChannels EPG Freshness** Uptime Kuma Push monitor (#35) was created on docker (192.168.1.174:3001). A separate Pushover notification integration was tested successfully to an iPhone. The user confirmed monitor #35 is **green/up** on 2026-10-28. Attaching the Pushover notification specifically to monitor #35 has not yet been independently confirmed.
+The **FastChannels EPG Freshness** Uptime Kuma Push monitor (#35) was created on docker (192.168.1.174:3001). A separate Pushover notification integration was tested successfully to an iPhone. The user confirmed monitor #35 is **green/up** on 2026-10-28. The user verified that `Homelab Pushover Alerts` is enabled on monitor #35 (Slack disabled).
 
 On fastchannels01 (192.168.1.228):
 
@@ -68,7 +68,7 @@ On fastchannels01 (192.168.1.228):
 - Healthy criteria: published `streameast_pruned_epg.xml.gz` exists, its mtime is at most **15 hours old**, is parseable gzip/XML, and has at least **400 unique EPG IDs currently airing**. The checker also counts programs with future stop times.
 - Checker pushes `status=up` or `status=down` to Kuma. Missing pushes are also detected by Kuma according to its Push monitor heartbeat/grace settings. File age alone is not sufficient evidence of live EPG coverage.
 
-**Verified manual test:** exit status 0; response `UP: EPG healthy: 620 current IDs, 9502 upcoming programs, age 0.6h`. The push request completed without an error. The systemd timer was verified `enabled` and `active`. Subsequently, its journal confirmed **five consecutive successful automatic executions** at 20:15:01, 20:20:08, 20:25:11, 20:30:08 and 20:35:08 UTC on 2026-10-28, all reporting `UP` without errors. The latest check had 620 currently airing EPG IDs, 9,273 upcoming programs, and a 1.0-hour-old guide. The next scheduled run was 20:40 UTC. The user also confirmed monitor #35 green. Delivery of an actual failure alert from #35 to Pushover has not yet been tested.
+**Verified manual test:** exit status 0; response `UP: EPG healthy: 620 current IDs, 9502 upcoming programs, age 0.6h`. The push request completed without an error. The systemd timer was verified `enabled` and `active`. Subsequently, its journal confirmed **five consecutive successful automatic executions** at 20:15:01, 20:20:08, 20:25:11, 20:30:08 and 20:35:08 UTC on 2026-10-28, all reporting `UP` without errors. The latest check had 620 currently airing EPG IDs, 9,273 upcoming programs, and a 1.0-hour-old guide. The next scheduled run was 20:40 UTC. The user also confirmed monitor #35 green. On 2026-10-28, a simulated `status=down` Push report with retries set to 0 successfully delivered a Pushover DOWN alert to the iPhone. Earlier attempts with 2 retries entered Pending rather than causing an alert. Restore an UP heartbeat afterward with `sudo /usr/local/sbin/check-fastchannels-epg` (final restoration still awaiting user verification).
 
 ```bash
 systemctl is-enabled fastchannels-epg-health.timer
@@ -79,7 +79,7 @@ systemctl show fastchannels-epg-health.service -p Result -p ExecMainStatus
 sudo /usr/local/sbin/check-fastchannels-epg
 ```
 
-**Remaining verification:** attach/verify `Homelab Pushover Alerts` on monitor #35 and optionally run a safe end-to-end failure-notification test. The general Pushover test notification arrived on the iPhone; this does not alone prove monitor #35 has notifications enabled. Consider an isolated failure test that does not modify the production guide or expose the private Push URL. The existing 8765 HTTP monitor separately checks that playlist hosting is reachable; it cannot detect guide staleness.
+**Notification verified:** `Homelab Pushover Alerts` is enabled on monitor #35. The user confirmed a real Pushover iPhone alert triggered by a simulated DOWN Push report after setting monitor retries to 0. **Remaining:** confirm the subsequent UP heartbeat restores the green monitor and, optionally, recovery notification. Consider an isolated failure test that does not modify the production guide or expose the private Push URL. The existing 8765 HTTP monitor separately checks that playlist hosting is reachable; it cannot detect guide staleness.
 
 ## Security
 
