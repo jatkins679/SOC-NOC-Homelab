@@ -43,7 +43,7 @@ sudo docker logs --since 10m fastchannels 2>&1 | grep -E 'm3u_fc-ste0[12]|pre-wa
 
 ## Follow-up
 
-- [ ] In Uptime Kuma on `docker (192.168.1.174:3001)`, add an HTTP(s) GET monitor named `FastChannels Playlist Server` pointing at `http://192.168.1.228:8765/streameast_pruned_part01.m3u`, 60-second interval, 3 retries, accepted status codes 200–299. Associate desired notifications, then confirm green status.
+- [x] Uptime Kuma on `docker (192.168.1.174:3001)`: the playlist-server monitor has been created and the user confirmed it is **green/up** on 2026-10-28. Suggested configuration: HTTP(s) GET, `http://192.168.1.228:8765/streameast_pruned_part01.m3u`, 60-second interval, 3 retries, accepted status codes 200–299. Notification association was not separately verified.
 - [ ] Investigate FC STe02's 37 failed image downloads if artwork is important.
 - [ ] Review EPG coverage separately: FastChannels source scrape logs reported very limited guide programs. This is not a finding about every EPG integrated into Channels DVR.
 - [ ] Consider guarding image pre-warm against non-image content and unbounded streaming responses (content-type validation, streaming byte cap, and full-request deadline).
