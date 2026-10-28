@@ -57,7 +57,7 @@ Manual start queues both sources when successful; inspect worker log for each `S
 
 ## Freshness monitoring — installed 2026-10-28
 
-The **FastChannels EPG Freshness** Uptime Kuma Push monitor (#35) was created on docker (192.168.1.174:3001). A separate Pushover notification integration was tested successfully to an iPhone. Attaching that notification to monitor #35 and verifying the monitor's **green/up** display were requested but not yet independently confirmed.
+The **FastChannels EPG Freshness** Uptime Kuma Push monitor (#35) was created on docker (192.168.1.174:3001). A separate Pushover notification integration was tested successfully to an iPhone. The user confirmed monitor #35 is **green/up** on 2026-10-28. Attaching the Pushover notification specifically to monitor #35 has not yet been independently confirmed.
 
 On fastchannels01 (192.168.1.228):
 
@@ -79,7 +79,7 @@ systemctl show fastchannels-epg-health.service -p Result -p ExecMainStatus
 sudo /usr/local/sbin/check-fastchannels-epg
 ```
 
-**Remaining verification:** check that monitor #35 turns green, verify the first scheduled journal entry reports `UP`, and attach `Homelab Pushover Alerts` to #35. Consider an isolated failure test that does not modify the production guide or expose the private Push URL. The existing 8765 HTTP monitor separately checks that playlist hosting is reachable; it cannot detect guide staleness.
+**Remaining verification:** verify the first scheduled journal entry reports `UP` and attach/verify `Homelab Pushover Alerts` on monitor #35. Consider an isolated failure test that does not modify the production guide or expose the private Push URL. The existing 8765 HTTP monitor separately checks that playlist hosting is reachable; it cannot detect guide staleness.
 
 ## Security
 
