@@ -55,11 +55,31 @@ gzip -t /home/jatkins/iptv-imports/streameast_pruned_epg.xml.gz
 
 Manual start queues both sources when successful; inspect worker log for each `Scrape complete` message and check `last_error` via `GET /api/sources`. An inactive one-shot service between executions is normal. Rollback requires preserving/validating the backup before replacing the published guide, then triggering the two sources to reimport it.
 
-## Freshness monitoring — follow-up configuration
+## Freshness monitoring — installed 2026-10-28
 
-**Recommended implementation (not yet confirmed installed):** Create a Uptime Kuma Push monitor called `FastChannels StreamEast EPG freshness`, with a 5-minute push interval and grace period. Store its private push URL as a root-only file on fastchannels01 (not in GitHub), then run a root-owned, systemd-timer-driven checker every five minutes. A checker should report UP only when the published XMLTV is readable and its **file modification time is less than 15 hours old**; also verify that recent/future programmes exist to avoid declaring an outdated provider guide healthy. Report DOWN on a stale/invalid guide; missing pushes should also cause a Kuma alert. Test a simulated stale guide without altering the production file, and confirm Kuma shows green after deployment.
+The **FastChannels EPG Freshness** Uptime Kuma Push monitor (#35) was created on docker (192.168.1.174:3001). A separate Pushover notification integration was tested successfully to an iPhone. Attaching that notification to monitor #35 and verifying the monitor's **green/up** display were requested but not yet independently confirmed.
 
-The existing playlist HTTP monitor remains useful for port 8765 reachability but is **not** an EPG freshness monitor. Monitor creation, push URL setup, checker deployment and successful green state remain to be verified. Configure notification delivery in Uptime Kuma separately.
+On fastchannels01 (192.168.1.228):
+
+- Checker: `/usr/local/sbin/check-fastchannels-epg` (root:root, 0700).
+- Private Uptime Kuma push URL: `/etc/fastchannels-epg/kuma-push.url` (root:root, 0600), in root-only directory.
+- Service: `/etc/systemd/system/fastchannels-epg-health.service`, root-run `Type=oneshot`, `ExecStart=/usr/local/sbin/check-fastchannels-epg`, 120-second timeout.
+- Timer: `/etc/systemd/system/fastchannels-epg-health.timer`, `OnCalendar=*:0/5`, `Persistent=true`, enabled and active.
+- Healthy criteria: published `streameast_pruned_epg.xml.gz` exists, its mtime is at most **15 hours old**, is parseable gzip/XML, and has at least **400 unique EPG IDs currently airing**. The checker also counts programs with future stop times.
+- Checker pushes `status=up` or `status=down` to Kuma. Missing pushes are also detected by Kuma according to its Push monitor heartbeat/grace settings. File age alone is not sufficient evidence of live EPG coverage.
+
+**Verified manual test:** exit status 0; response `UP: EPG healthy: 620 current IDs, 9502 upcoming programs, age 0.6h`. The push request completed without an error. The systemd timer was verified `enabled` and `active`; next scheduled execution at the time of inspection was **2026-10-28 20:10:00 UTC**. The journal showed **no automatic executions yet**. Do not claim the automatic run or end-to-end phone alert has been proven until its log and UI state are checked.
+
+```bash
+systemctl is-enabled fastchannels-epg-health.timer
+systemctl is-active fastchannels-epg-health.timer
+systemctl list-timers --all fastchannels-epg-health.timer
+sudo journalctl -u fastchannels-epg-health.service -n 30 --no-pager
+systemctl show fastchannels-epg-health.service -p Result -p ExecMainStatus
+sudo /usr/local/sbin/check-fastchannels-epg
+```
+
+**Remaining verification:** check that monitor #35 turns green, verify the first scheduled journal entry reports `UP`, and attach `Homelab Pushover Alerts` to #35. Consider an isolated failure test that does not modify the production guide or expose the private Push URL. The existing 8765 HTTP monitor separately checks that playlist hosting is reachable; it cannot detect guide staleness.
 
 ## Security
 
