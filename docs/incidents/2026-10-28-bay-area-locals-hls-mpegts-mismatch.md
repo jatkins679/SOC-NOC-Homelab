@@ -56,3 +56,41 @@ The operator confirmed: **“they're all working now with TS and not HLS.”** T
 A `.m3u8`-looking endpoint or an HTTP 302 does not establish that its final payload is HLS. Trace redirects and inspect the final response content type and first bytes before changing playlists or rebuilding EPG mappings. Source-level playback format settings in Channels DVR must match the actual media returned. If a source mixes MPEG-TS and HLS streams, verify compatibility before changing the format for the entire lineup.
 
 See also [Channels DVR and FastChannels Media Services](../27-channels-dvr-fastchannels.md).
+
+## Recurrence during clean Channels DVR source rebuild — 2026-10-30
+
+**Status:** Resolved; all six Bay Area Local channels reported playing in the Channels DVR web player after correction.
+
+### Context and impact
+
+The operator removed the accumulated Channels DVR custom M3U sources and rebuilt from FastChannels on `fastchannels01 (192.168.1.228:5523)`. The `FC Bay Area Local` feed was configured in **Separate playlists** guide mode rather than a mixed XMLTV/Gracenote playlist. Channels DVR (`docker, 192.168.1.174:8089`) registered:
+
+- `M3U-FastChannelsFCBayAreaLocal` → `XMLTV-FastChannelsFCBayAreaLocal` (five standard XMLTV channels)
+- `M3U-FastChannelsFCBayAreaLocalGracenote` → `X-M3U` (one Gracenote channel)
+
+Guide entries and logos appeared for all six stations: **KGO, KRON, KPIX, KTVU, KNTV, and KQED**. However, the five standard/XMLTV channels failed in the Channels DVR web player with network or unrecognized-format errors. **KQED (Gracenote) played normally.** This separated successful EPG ingestion from unsuccessful stream playback.
+
+### Diagnostic evidence
+
+The standard FastChannels M3U exposed the KGO stream as:
+
+```text
+http://192.168.1.228:5523/play/m3u_fc-ste01/465959.m3u8
+```
+
+A `curl -L` check from `docker` showed FastChannels responding with HTTP **302**, redirecting to an upstream **.ts** resource; a subsequent upstream redirect returned HTTP **200**. The captured payload was positively identified by `file` as **MPEG transport stream data**. About **16.9 MB** of live stream data arrived before the 15-second request timed out, so the timeout was not evidence of a dead stream. Private provider URL paths and authentication tokens are intentionally excluded.
+
+### Corrective action
+
+In Channels DVR's **FastChannels FC Bay Area Local** standard five-channel M3U source, changed **Stream Format** from **HLS** to **MPEG-TS**. The working Gracenote source was left unchanged. No EPG remapping was needed.
+
+### Verification and preventive guidance
+
+The operator then confirmed: **“they all play now”**. Combined with visible guide entries for all six stations, this confirms both EPG coverage and web-player playback after the format correction. This is independent of any future recording reliability test.
+
+For future FastChannels → Channels DVR imports:
+
+1. Keep matching standard XMLTV and Gracenote guide sources separately when needed.
+2. Test representative **actual playback payloads**, not just M3U URL extensions or successful guide imports.
+3. Use **MPEG-TS** for a Channels DVR source whose redirected streams deliver TS, even if the FastChannels endpoint ends with `.m3u8`.
+4. Verify playback and guide listings before promoting the feed into the production lineup. Avoid blindly applying MPEG-TS to unrelated feeds that may truly deliver HLS.
