@@ -120,12 +120,12 @@ PY
 1. On an isolated recovery system, verify the FastChannels VM/container and database version are compatible.
 2. Restore the FastChannels application state using the appropriate VM or application recovery method. Never overwrite a live SQLite database while FastChannels is using it.
 3. Restore the `channel-logos` directory, keeping its `logos/` filenames and directory structure intact.
-4. Restore the HTTP service on port **8766** using its actual verified service configuration; the service unit or launch method still needs to be captured and backed up.
+4. Restore the `channel-logos` Docker Compose service on port **8766** using the archived `compose.yaml`; on a compatible restored host, run `sudo docker compose up -d` from `/home/jatkins/channel-logos`. The service mounts `./logos` read-only.
 5. Check reachability of several exact PNG URLs from `fastchannels01` and `docker`.
 6. Check `fc-logo-manager.py inventory`, then inspect the live `/m3u` for the expected `tvg-logo` URLs.
 7. Only after a successful isolated test, plan any production recovery or cutover. Avoid starting a restored VM on the same network with `192.168.1.228` while production is online.
 
-**Not yet verified:** independent off-host copy of the October 30 logical backup; startup method for port 8766; and an isolated restoration of the post-cleanup 395-logo state.
+**Verified October 30:** An off-host copy of the logo archive, online SQLite backup, and SHA256SUMS was transferred to `storage01 (192.168.1.208)` at `G:\\ProxmoxBackups\\FastChannels-Logo-Backups\\2026-10-30`. Both files passed checksum validation at the destination, and the temporary CIFS mount was unmounted. The logo server is the Docker Compose service `channel-logos`, using `nginx:stable-alpine`, port `8766:80`, restart `unless-stopped`, and a read-only bind mount `./logos:/usr/share/nginx/html/logos:ro`. The `compose.yaml` and Canada One PNG were confirmed within the archive; `docker compose config --quiet` passed, Docker is enabled and active, and a logo URL returned HTTP 200. The full post-cleanup isolated restore remains untested.
 
 ## References
 
