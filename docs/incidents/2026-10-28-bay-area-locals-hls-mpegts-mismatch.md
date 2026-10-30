@@ -41,7 +41,7 @@ grep -Ei '^HTTP/|^Content-Type:' /tmp/stream-headers.txt
 head -c 64 /tmp/stream-check.bin | xxd
 ```
 
-A live stream can exceed a size or time limit and cause `curl` to exit nonzero even after valid transport-stream bytes have been captured. Do not publish raw redirect locations or downloaded content.
+A live stream can exceed a size or time limit and cause `curl` to exit nonzero even after valid transport-stream bytes have been captured. 
 
 ## Resolution
 
