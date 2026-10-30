@@ -181,6 +181,12 @@ The complete investigation and verification are recorded in [Ticket 17 — Olive
 
 ---
 
+## Logo management and recovery
+
+The FC STe01 logo cleanup completed on October 30, 2026: 395 locally pinned logos, no remaining `iptv4.net` references in the 700-channel source, and no missing logo URLs. The local image server on `fastchannels01 (192.168.1.228:8766)` and FastChannels database must both be protected; a post-cleanup off-host backup and isolated restore still need testing.
+
+[FastChannels logo management and recovery runbook](fastchannels-logo-management-recovery.md)
+
 ## Remaining work
 
 - Keep an eye on disk space before future Docker image updates.
