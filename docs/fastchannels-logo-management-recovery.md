@@ -125,10 +125,22 @@ PY
 6. Check `fc-logo-manager.py inventory`, then inspect the live `/m3u` for the expected `tvg-logo` URLs.
 7. Only after a successful isolated test, plan any production recovery or cutover. Avoid starting a restored VM on the same network with `192.168.1.228` while production is online.
 
-**Verified October 30:** An off-host copy of the logo archive, online SQLite backup, and SHA256SUMS was transferred to `storage01 (192.168.1.208)` at `G:\\ProxmoxBackups\\FastChannels-Logo-Backups\\2026-10-30`. Both files passed checksum validation at the destination, and the temporary CIFS mount was unmounted. The logo server is the Docker Compose service `channel-logos`, using `nginx:stable-alpine`, port `8766:80`, restart `unless-stopped`, and a read-only bind mount `./logos:/usr/share/nginx/html/logos:ro`. The `compose.yaml` and Canada One PNG were confirmed within the archive; `docker compose config --quiet` passed, Docker is enabled and active, and a logo URL returned HTTP 200. The full post-cleanup isolated restore remains untested.
+**Verified October 30:** An off-host copy of the logo archive, online SQLite backup, and SHA256SUMS was transferred to `storage01 (192.168.1.208)` at `G:\\ProxmoxBackups\\FastChannels-Logo-Backups\\2026-10-30`. Both files passed checksum validation at the destination, and the temporary CIFS mount was unmounted. The logo server is the Docker Compose service `channel-logos`, using `nginx:stable-alpine`, port `8766:80`, restart `unless-stopped`, and a read-only bind mount `./logos:/usr/share/nginx/html/logos:ro`. The `compose.yaml` and Canada One PNG were confirmed within the archive; `docker compose config --quiet` passed, Docker is enabled and active, and a logo URL returned HTTP 200. A full isolated FastChannels application restore remains untested; the isolated logo-serving recovery test passed on October 30, 2026.
 
 ## References
 
 - [Channels DVR and FastChannels Media Services](27-channels-dvr-fastchannels.md)
 - [FastChannels EPG Refresh and Monitoring](fastchannels-epg-refresh-and-monitoring.md)
 - [Backup Restore Validation](21-proxmox-backup-restore-validation.md)
+
+## Isolated logo recovery exercise — October 30, 2026
+
+**Result: PASS (logo-serving subsystem).** Restored `channel-logos.tar.gz` and `fastchannels.db` to `/var/tmp/fc-logo-restore-k1nqu9` on `fastchannels01 (192.168.1.228)` without touching production data. The restored SQLite database passed `PRAGMA integrity_check` (`ok`, 11 tables). The archived `compose.yaml` validated successfully.
+
+A temporary `nginx:stable-alpine` container, `fc-logo-restore-test`, served the **restored** PNG directory read-only on `127.0.0.1:18766`; the Canada One image returned HTTP 200. The production server on port 8766 independently returned HTTP 200.
+
+Read-only cross-check of source 54 database assignments versus extracted artwork found **399 pinned URLs**: **395 local assignments**, **4 intentional external Wikimedia Commons URLs** (KRON, KPIX, KTVU, KNTV), **394 unique referenced local PNGs**, **397 restored PNGs**, **zero missing referenced local files**, and **zero unexpected URLs**. The corrected validation returned `RESULT: PASS`. This verifies logo URL/file consistency, not external Wikimedia availability.
+
+**Cleanup confirmed:** `sudo docker rm -f fc-logo-restore-test` succeeded, no matching test container remained, and the production logo URL still returned HTTP 200. The original and off-host backups were retained. The extracted test directory may still be present; no deletion was reported.
+
+**Scope limitation:** The test verifies restored SQLite integrity, logo references, archived Compose configuration, and HTTP delivery of restored logos. It does **not** represent a complete isolated FastChannels application restore or production cutover.
