@@ -6,7 +6,7 @@ I wanted to bring the free live-TV sources I've been experimenting with into one
 
 I installed Channels DVR on my existing `docker` VM and set up FastChannels on its own Proxmox VM. Keeping FastChannels separate was deliberate: an earlier attempt on the Docker VM was followed by serious memory pressure and a lockup. I didn't establish that FastChannels alone caused the problem, but I didn't want another source scan affecting the rest of my services.
 
-By October 25, 2026, the feeds were working, Uptime Kuma was monitoring FastChannels, and I'd completed a backup and an isolated restore test. The restore confirmed that Ubuntu and the FastChannels web interface would start. I haven't tested every individual channel from a restored VM.
+After some short troubleshooting, the feeds were working, Uptime Kuma was monitoring FastChannels, and I'd completed a backup and an isolated restore test. The restore confirmed that Ubuntu and the FastChannels web interface would start. I haven't tested every individual channel from a restored VM.
 
 ## Architecture
 
