@@ -53,8 +53,6 @@ Dispatcharr organizes the channels and their guide information. I use its **Redi
 | Windows folder | `G:\IPTV\Recordings` |
 | SMB mount | `/mnt/iptv-recordings` |
 
-These are recorded lab addresses, not a recommendation to publish the services to the Internet.
-
 ---
 
 ## 2. SMB Recording Storage
@@ -117,7 +115,7 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 ```
 
-The server configuration uses the SMB mount as `RECORDINGS_DIR` and points `FFMPEG_PATH` at a custom wrapper. The API token and the actual configuration file contents are deliberately excluded here.
+The server configuration uses the SMB mount as `RECORDINGS_DIR` and points `FFMPEG_PATH` at a custom wrapper. 
 
 Useful checks:
 
@@ -285,5 +283,3 @@ A successful push proves the share was usable at the time of the check. It does 
 - [ ] Consider checking recording integrity and failures separately from server uptime.
 
 The completed work gives me a practical example of multi-service troubleshooting: following a stream through a proxy and recorder, reading systemd and FFmpeg logs, dealing with SMB storage, and turning a one-off fix into an ongoing monitor.
-
-**Security note:** This public document deliberately excludes provider stream URLs, embedded credentials, SMB passwords, the IPTVX token, the Uptime Kuma Push token, and private environment file contents.
